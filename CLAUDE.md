@@ -17,13 +17,13 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - `Settings.kt` — kotlinx.serialization JSON, `sanitized()` keeps presets/default/app rules consistent
 - `app/` — Android (minSdk 26, target 35, Compose)
   - `VoiceAccessibilityService` — tracks the focused editable node (`findFocus(FOCUS_INPUT)`, IME window),
-    shows/hides the bubble (350 ms debounce), runs dictation, inserts. Long press: menu; during dictation: cancel
+    shows/hides the bubble (700 ms debounce), FR/EN badge, menu language switch, runs dictation, inserts. Long press: menu; during dictation: cancel
   - `OverlayController` / `BubbleView` — TYPE_ACCESSIBILITY_OVERLAY windows, FLAG_NOT_FOCUSABLE (the target
     keeps focus): bubble (drag/tap/long-press), caption (live transcript), preset menu
-  - `SpeechEngine` — SpeechRecognizer, on-device when available; tap-to-stop = restart after each pause and
+  - `SpeechEngine` — SpeechRecognizer, on-device when available; tap-to-stop = segmented session (API 33+), else restart after each pause and
     concatenate segments. Main thread only
   - `TextInserter` — ACTION_SET_TEXT + ACTION_SET_SELECTION, fallback clipboard (EXTRA_IS_SENSITIVE) + ACTION_PASTE; undo of the last insert
-  - `MicService` — foreground service type microphone while dictating (best effort)
+  - `MicService` — foreground service type microphone while dictating (best effort); the recognizer starts 400 ms later
   - `SettingsRepository` — StateFlow shared by service and activity (same process), SharedPreferences JSON
   - `DiagnosticLog` — in-memory event log (never dictated text) shown/copied in the Diagnostic card (raw AudioRecord peak test + recognizer test)
   - `MainActivity` — single Compose screen: setup steps, try field, diagnostic, language, presets, per-app, dictionary, signature, bubble, commands
