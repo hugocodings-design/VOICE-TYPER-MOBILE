@@ -52,8 +52,10 @@ Sur le téléphone : ouvrez l'APK (autorisez « sources inconnues »), puis dans
    (Android affiche un avertissement standard pour tout service d'accessibilité)
 3. **Reconnaissance hors ligne** → téléchargez le français (et l'anglais) si ce n'est pas déjà fait
 
-> Android 13+ peut bloquer « Paramètres restreints » pour une app installée hors Play Store : Paramètres →
-> Applications → Voice Typer → ⋮ → **Autoriser les paramètres restreints**, puis réactivez le service.
+> Android 13+ (« Accès refusé » / « Paramètre restreint ») bloque l'accessibilité des apps hors Play Store : Paramètres →
+> Applications → Voice Typer → ⋮ → **Autoriser les paramètres restreints**, puis réactivez le service
+> (bouton « Ouvrir les infos de Voice Typer » dans l'app). Samsung : si l'option manque, désactivez
+> temporairement Sécurité et confidentialité → **Blocage automatique**.
 
 ## Développement
 

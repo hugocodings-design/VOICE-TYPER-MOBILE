@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings as AndroidSettings
@@ -161,6 +162,23 @@ private fun StatusCard() {
                         "que le champ de texte actif et le nom de l'application, et n'a pas accès à Internet.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (Build.VERSION.SDK_INT >= 33) {
+                    HorizontalDivider()
+                    Text("« Accès refusé » / « Paramètre restreint » ?", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Android bloque l'accessibilité des apps installées hors Play Store. Touchez le bouton, " +
+                            "puis ⋮ (en haut à droite) → « Autoriser les paramètres restreints », confirmez, " +
+                            "et revenez activer la bulle (étape 2). Sur Samsung, si l'option n'apparaît pas : " +
+                            "Paramètres → Sécurité et confidentialité → Blocage automatique → désactiver le temps de l'activer.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = {
+                        context.startActivity(
+                            Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }) { Text("Ouvrir les infos de Voice Typer") }
+                }
             }
         }
     }
