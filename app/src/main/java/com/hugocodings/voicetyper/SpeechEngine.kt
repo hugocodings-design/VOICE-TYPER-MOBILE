@@ -13,8 +13,9 @@ import java.util.Locale
 /**
  * Wraps Android's SpeechRecognizer, on-device when available (Android 12+), so audio never leaves the phone.
  *
- * Tap-to-stop mode: the recognizer stops by itself after a pause, so each finished segment is kept and
- * listening restarts until the user taps the bubble again; then all segments are delivered together.
+ * Tap-to-stop mode: on Android 13+ a *segmented session* keeps one recognition running across pauses
+ * (no words lost, no restart beeps) until the user taps again. Older phones, or recognizers that ignore it,
+ * stop after a pause: each finished segment is kept and listening restarts. All segments are delivered together.
  * Must be used from the main thread.
  */
 class SpeechEngine(private val context: Context, private val listener: Listener) {
@@ -85,7 +86,11 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, offlineOnly)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            if (continuous) {
+            if (continuous && Build.VERSION.SDK_INT >= 33) {
+                // one session for up to 10 min, split into segments at pauses, ended by stopListening()
+                putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 10 * 60 * 1000L)
+            } else if (continuous) {
                 // honoured by some recognizers only; the restart loop covers the others
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
@@ -119,6 +124,21 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
         override fun onPartialResults(partialResults: Bundle?) {
             lastPartial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
             listener.onPartial(currentText())
+        }
+
+        override fun onSegmentResults(segmentResults: Bundle) {
+            if (!active) return
+            val text = segmentResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+            segments += text.ifBlank { lastPartial }
+            lastPartial = ""
+            listener.onPartial(currentText())
+        }
+
+        override fun onEndOfSegmentedSession() {
+            if (!active) return
+            if (lastPartial.isNotBlank()) segments += lastPartial
+            lastPartial = ""
+            deliver()
         }
 
         override fun onResults(results: Bundle?) {

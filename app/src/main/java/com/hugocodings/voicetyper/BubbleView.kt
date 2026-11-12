@@ -9,7 +9,10 @@ import android.graphics.RectF
 import android.view.View
 import androidx.core.content.ContextCompat
 
-/** The round microphone bubble. Colour = active preset; red with a level ring while listening. */
+/**
+ * The round microphone bubble. Same look in every app (green); the badge under the icon is the dictation
+ * language ("FR" / "EN"). Red with a level ring while listening. The preset is shown in the caption.
+ */
 @SuppressLint("ViewConstructor")
 class BubbleView(context: Context) : View(context) {
 
@@ -17,9 +20,9 @@ class BubbleView(context: Context) : View(context) {
 
     var state: State = State.IDLE
         set(value) { field = value; invalidate() }
-    var presetColor: Int = Color.parseColor("#22C55E")
+    var idleColor: Int = Color.parseColor("#22C55E")
         set(value) { field = value; invalidate() }
-    /** Short preset name drawn under the icon ("Courriel"). */
+    /** Short badge drawn under the icon: the dictation language ("FR"). */
     var label: String = ""
         set(value) { field = value; invalidate() }
     private var level = 0f
@@ -48,7 +51,7 @@ class BubbleView(context: Context) : View(context) {
         val cx = w / 2f
         val cy = h / 2f
         fill.color = when (state) {
-            State.IDLE -> presetColor
+            State.IDLE -> idleColor
             State.LISTENING -> Color.parseColor("#EF4444")
             State.WORKING -> Color.parseColor("#6B7280")
             State.ERROR -> Color.parseColor("#991B1B")
@@ -67,8 +70,9 @@ class BubbleView(context: Context) : View(context) {
         mic.setBounds((cx - icon / 2f).toInt(), top, (cx + icon / 2f).toInt(), top + icon)
         mic.draw(canvas)
         if (label.isNotEmpty() && state == State.IDLE) {
-            text.textSize = r * 0.30f
-            val shown = if (label.length > 8) label.take(7) + "…" else label
+            text.textSize = r * 0.32f
+            text.isFakeBoldText = true
+            val shown = label.take(4)
             canvas.drawText(shown, cx, cy + r * 0.62f, text)
         }
     }

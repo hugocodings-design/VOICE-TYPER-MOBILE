@@ -226,7 +226,9 @@ private fun LanguageCard(s: Settings) {
                 FilterChip(selected = s.language == lang, onClick = { update { it.copy(language = lang) } }, label = { Text(label) })
             }
         }
-        Text("Auto = la langue du téléphone (${SpeechEngine.languageTag(null)}).", style = MaterialTheme.typography.bodySmall)
+        Text("Auto = la langue du téléphone (${SpeechEngine.languageTag(null)}). Changement rapide : appui long " +
+            "sur la bulle → Langue. La langue choisie doit être téléchargée pour la reconnaissance hors ligne.",
+            style = MaterialTheme.typography.bodySmall)
     }
 }
 

@@ -34,6 +34,7 @@ class OverlayController(private val context: Context, private val callbacks: Cal
         fun onMenuPreset(preset: Preset, remember: Boolean)
         fun onMenuRepaste()
         fun onMenuHideHere()
+        fun onMenuToggleLanguage()
     }
 
     private val wm: WindowManager = context.getSystemService(WindowManager::class.java)!!
@@ -116,7 +117,7 @@ class OverlayController(private val context: Context, private val callbacks: Cal
     // ---- long-press menu ----
 
     @SuppressLint("SetTextI18n", "ClickableViewAccessibility")
-    fun showMenu(presets: List<Preset>, currentId: String, appLabel: String, hasLast: Boolean) {
+    fun showMenu(presets: List<Preset>, currentId: String, appLabel: String, hasLast: Boolean, language: String) {
         hideMenu()
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -152,6 +153,7 @@ class OverlayController(private val context: Context, private val callbacks: Cal
             })
         }
         list.addView(remember)
+        list.addView(item("🌐  Langue : $language (toucher pour changer)", null) { hideMenu(); callbacks.onMenuToggleLanguage() })
         if (hasLast) list.addView(item("↺  Recoller la dernière dictée", null) { hideMenu(); callbacks.onMenuRepaste() })
         list.addView(item("✕  Masquer la bulle ici", null) { hideMenu(); callbacks.onMenuHideHere() })
 

@@ -144,6 +144,14 @@ class PipelineTest {
         assertEquals(Lang.FR, Pipeline.guessLang("je pense que le fichier est prêt"))
     }
 
+    @Test fun oldAutoLanguageMigratesToFrenchOnce() {
+        assertEquals(Lang.FR, Settings.decode("""{"settingsVersion":1,"language":null}""").language)
+        // a v2 user who chose auto keeps it
+        assertEquals(null, Settings.decode("""{"settingsVersion":2,"language":null}""").language)
+        assertEquals(Lang.EN, Settings().toggledLanguage().language)
+        assertEquals(Lang.FR, Settings().toggledLanguage().toggledLanguage().language)
+    }
+
     @Test fun settingsRoundTripAndSanitize() {
         val s = settings.withAppPreset("com.example", "notes", "Exemple")
         val back = Settings.decode(Settings.encode(s))

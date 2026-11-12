@@ -9,9 +9,9 @@ enum class BubbleMode { WHEN_TYPING, ALWAYS }
 
 @Serializable
 data class Settings(
-    val settingsVersion: Int = 1,
-    /** null = auto (phone language). */
-    val language: Lang? = null,
+    val settingsVersion: Int = CURRENT_VERSION,
+    /** null = auto (phone language). French by default, like the desktop app. */
+    val language: Lang? = Lang.FR,
     val presets: List<Preset> = Defaults.presets(),
     val defaultPresetId: String = "normal",
     val appRules: List<AppRule> = Defaults.appRules(),
@@ -39,19 +39,33 @@ data class Settings(
         return preset(rule?.presetId) ?: preset(defaultPresetId) ?: presets.firstOrNull() ?: Defaults.presets().first()
     }
 
+    /** Bubble menu switch: FR ↔ EN (auto → FR). */
+    fun toggledLanguage(): Settings = copy(language = if (language == Lang.FR) Lang.EN else Lang.FR)
+
     fun withAppPreset(packageName: String, presetId: String?, label: String = ""): Settings {
         val others = appRules.filterNot { it.packageName == packageName }
         return copy(appRules = if (presetId == null) others else others + AppRule(packageName, presetId, label))
     }
 
     companion object {
+        const val CURRENT_VERSION = 2
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = false }
 
         fun decode(text: String?): Settings =
             if (text.isNullOrBlank()) Settings()
-            else runCatching { json.decodeFromString<Settings>(text) }.getOrElse { Settings() }.sanitized()
+            else runCatching { json.decodeFromString<Settings>(text) }.getOrElse { Settings() }.migrated().sanitized()
 
         fun encode(settings: Settings): String = json.encodeToString(settings)
+    }
+
+    /**
+     * v1 → v2: "auto" followed the phone language, so French speech failed on a phone set to English.
+     * Version 0.1.x installs had auto by default: switch them to French once.
+     */
+    fun migrated(): Settings {
+        var s = this
+        if (s.settingsVersion < 2 && s.language == null) s = s.copy(language = Lang.FR)
+        return s.copy(settingsVersion = CURRENT_VERSION)
     }
 
     /** Never leave the app without presets or with a dangling default. */

@@ -15,6 +15,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.content.ContextCompat
 import com.hugocodings.voicetyper.core.BubbleMode
+import com.hugocodings.voicetyper.core.Lang
 import com.hugocodings.voicetyper.core.Pipeline
 import com.hugocodings.voicetyper.core.Preset
 import com.hugocodings.voicetyper.core.Style
@@ -89,13 +90,9 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         main.removeCallbacks(hideLater)
         if (show) {
             overlay.showBubble(s.bubbleSizeDp, s.bubbleX, s.bubbleY)
-            if (!speech.isActive) {
-                val preset = s.presetFor(if (typing) targetPkg else activePkg)
-                overlay.bubble.presetColor = preset.color.toInt()
-                overlay.bubble.label = if (preset.id == s.defaultPresetId) "" else preset.name
-            }
+            if (!speech.isActive) overlay.bubble.label = languageBadge()
         } else {
-            main.postDelayed(hideLater, 350) // the keyboard flickers between fields: don't blink
+            main.postDelayed(hideLater, 700) // the keyboard flickers between fields/screens: don't blink
         }
     }
 
@@ -121,7 +118,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             return
         }
         val pkg = targetPkg
-        overlay.showMenu(settings.presets, settings.presetFor(pkg).id, appLabel(pkg), lastDictation.isNotEmpty())
+        overlay.showMenu(settings.presets, settings.presetFor(pkg).id, appLabel(pkg), lastDictation.isNotEmpty(), languageName())
     }
 
     override fun onBubbleMoved(x: Int, y: Int) = SettingsRepository.update { it.copy(bubbleX = x, bubbleY = y) }
@@ -134,6 +131,20 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
     override fun onMenuRepaste() {
         if (lastDictation.isNotEmpty()) write(lastDictation, keepCase = true)
+    }
+
+    override fun onMenuToggleLanguage() {
+        SettingsRepository.update { it.toggledLanguage() }
+        overlay.bubble.label = languageBadge()
+        overlay.showCaption("Langue de dictée : ${languageName()}", 1500)
+    }
+
+    private fun languageBadge(): String = when (settings.language) {
+        Lang.FR -> "FR"; Lang.EN -> "EN"; null -> "AUTO"
+    }
+
+    private fun languageName(): String = when (settings.language) {
+        Lang.FR -> "Français"; Lang.EN -> "English"; null -> "Auto (${SpeechEngine.languageTag(null)})"
     }
 
     override fun onMenuHideHere() {
@@ -161,9 +172,10 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         MicService.start(this)
         haptic()
         overlay.bubble.state = BubbleView.State.LISTENING
-        overlay.showCaption("${preset.name} — parlez…")
         val s = settings
-        speech.start(preset.language ?: s.language, s.offlineOnly, s.tapToStop)
+        val lang = preset.language ?: s.language
+        overlay.showCaption("${preset.name} · ${SpeechEngine.languageTag(lang)} — parlez…")
+        speech.start(lang, s.offlineOnly, s.tapToStop)
     }
 
     override fun onListening() {}

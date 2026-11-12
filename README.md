@@ -30,7 +30,8 @@ mis en forme selon le **préréglage de l'application**, puis écrit là où se 
 - [x] Insertion intelligente : espace automatique, minuscule en milieu de phrase, remplace la sélection
 - [x] Si un champ refuse l'écriture directe : collage par le presse-papiers (marqué « sensible »), sinon
       le texte reste copié
-- [x] Français / English / Auto (fr-CA ou fr-FR selon le téléphone)
+- [x] Français par défaut, English ou Auto ; changement rapide : appui long sur la bulle → Langue (badge FR/EN sur la bulle)
+- [x] Android 13+ : une seule session de reconnaissance pendant toute la dictée (pas de mots perdus aux pauses)
 
 ## Feuille de route
 
