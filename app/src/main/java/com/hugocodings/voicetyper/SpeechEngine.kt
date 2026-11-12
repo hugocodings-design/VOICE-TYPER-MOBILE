@@ -39,6 +39,9 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
     private var offlineOnly = true
 
     val isActive: Boolean get() = active
+    /** Loudest level heard in this dictation: stays ≈ -2 dB when the mic delivers silence. */
+    var maxRms = -100f
+        private set
 
     fun start(lang: Lang?, offlineOnly: Boolean, continuous: Boolean) {
         cancel()
@@ -48,6 +51,7 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
         segments.clear()
         lastPartial = ""
         langTag = languageTag(lang)
+        maxRms = -100f
         active = true
         if (!SpeechRecognizer.isRecognitionAvailable(context) && !onDeviceAvailable()) {
             fail("Aucun service de reconnaissance vocale sur ce téléphone (installez « Google » ou « Speech Services by Google »).")
@@ -79,6 +83,7 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
         val r = if (onDevice && Build.VERSION.SDK_INT >= 31) SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         else SpeechRecognizer.createSpeechRecognizer(context)
         recognizer = r
+        DiagnosticLog.add("Reconnaissance : ${describeEngine()} · $langTag · hors ligne=$offlineOnly · continu=$continuous")
         r.setRecognitionListener(callbacks)
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -102,21 +107,38 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
 
     private fun currentText(): String = (segments + lastPartial).filter { it.isNotBlank() }.joinToString(" ")
 
+    /** On-device recognizer, or the phone's default recognition service (its package). */
+    fun describeEngine(): String {
+        if (onDevice) return "sur l'appareil"
+        val svc = runCatching {
+            android.provider.Settings.Secure.getString(context.contentResolver, "voice_recognition_service")
+        }.getOrNull()
+        return "service " + (svc?.substringBefore('/') ?: "par défaut")
+    }
+
     private fun deliver() {
         val text = segments.filter { it.isNotBlank() }.joinToString(" ")
+        DiagnosticLog.add("Fin : ${text.length} caractères reconnus · niveau max ${"%.1f".format(maxRms)} dB")
         cancel()
         listener.onFinal(text)
     }
 
     private fun fail(message: String) {
+        DiagnosticLog.add("Échec : $message · niveau max ${"%.1f".format(maxRms)} dB")
         cancel()
         listener.onError(message)
     }
 
     private val callbacks = object : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) = listener.onListening()
+        override fun onReadyForSpeech(params: Bundle?) {
+            DiagnosticLog.add("Micro ouvert, prêt à écouter")
+            listener.onListening()
+        }
         override fun onBeginningOfSpeech() {}
-        override fun onRmsChanged(rmsdB: Float) = listener.onLevel(rmsdB)
+        override fun onRmsChanged(rmsdB: Float) {
+            if (rmsdB > maxRms) maxRms = rmsdB
+            listener.onLevel(rmsdB)
+        }
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -151,6 +173,7 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
 
         override fun onError(error: Int) {
             if (!active) return
+            DiagnosticLog.add("Erreur reconnaissance code $error")
             val silence = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
             if (silence) {
                 if (lastPartial.isNotBlank()) segments += lastPartial

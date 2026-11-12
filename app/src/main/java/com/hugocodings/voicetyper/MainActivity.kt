@@ -49,6 +49,7 @@ import com.hugocodings.voicetyper.core.Replacement
 import com.hugocodings.voicetyper.core.Settings
 import com.hugocodings.voicetyper.core.Style
 import com.hugocodings.voicetyper.core.VoiceCommands
+import kotlinx.coroutines.launch
 
 private val Green = Color(0xFF22C55E)
 private val PRESET_COLORS = listOf(0xFF22C55E, 0xFF3B82F6, 0xFFF59E0B, 0xFFA855F7, 0xFFEC4899, 0xFF14B8A6, 0xFF6B7280)
@@ -84,6 +85,7 @@ private fun Screen() {
         ) {
             item { StatusCard() }
             item { TryCard() }
+            item { DiagnosticCard(s) }
             item { LanguageCard(s) }
             item { PresetsCard(s, onEdit = { editing = it }) }
             item { AppRulesCard(s, onAdd = { pickingApp = true }) }
@@ -467,5 +469,115 @@ private fun CommandsCard() {
             }
         }
         Text("Appui long sur la bulle pendant la dictée = annuler.", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+// ---------------- diagnostic ----------------
+
+/** Peak level (0…1) of 3 s of raw microphone audio, or null if the mic could not be opened. */
+@android.annotation.SuppressLint("MissingPermission")
+private suspend fun rawMicPeak(onLevel: (Float) -> Unit): Float? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val rate = 16000
+    val min = android.media.AudioRecord.getMinBufferSize(rate, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
+    val rec = runCatching {
+        android.media.AudioRecord(android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION, rate,
+            android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT, maxOf(min, 3200) * 2)
+    }.getOrNull() ?: return@withContext null
+    if (rec.state != android.media.AudioRecord.STATE_INITIALIZED) { rec.release(); return@withContext null }
+    val buf = ShortArray(1600)
+    var peak = 0f
+    try {
+        rec.startRecording()
+        val end = System.currentTimeMillis() + 3000
+        while (System.currentTimeMillis() < end) {
+            val n = rec.read(buf, 0, buf.size)
+            if (n <= 0) continue
+            var m = 0
+            for (i in 0 until n) m = maxOf(m, kotlin.math.abs(buf[i].toInt()))
+            val lvl = m / 32768f
+            peak = maxOf(peak, lvl)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onLevel(lvl) }
+        }
+    } finally {
+        runCatching { rec.stop() }
+        rec.release()
+    }
+    peak
+}
+
+@Composable
+private fun DiagnosticCard(s: Settings) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val log by DiagnosticLog.lines.collectAsStateWithLifecycle()
+    var micLevel by remember { mutableFloatStateOf(0f) }
+    var micResult by remember { mutableStateOf<String?>(null) }
+    var micRunning by remember { mutableStateOf(false) }
+    var recoStatus by remember { mutableStateOf<String?>(null) }
+    var recoLevel by remember { mutableFloatStateOf(0f) }
+    val engine = remember {
+        SpeechEngine(context, object : SpeechEngine.Listener {
+            override fun onListening() { recoStatus = "J'écoute… parlez puis attendez" }
+            override fun onLevel(rmsDb: Float) { recoLevel = ((rmsDb + 2f) / 12f).coerceIn(0f, 1f) }
+            override fun onPartial(text: String) { recoStatus = "« $text »" }
+            override fun onFinal(text: String) {
+                recoLevel = 0f
+                recoStatus = if (text.isNotBlank()) "✓ Reconnu : « $text »" else "✗ Rien reconnu"
+            }
+            override fun onError(message: String) { recoLevel = 0f; recoStatus = "✗ $message" }
+        })
+    }
+    DisposableEffect(Unit) { onDispose { engine.cancel() } }
+    val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    Section("Diagnostic", "Si le micro ne vous entend pas : faites les deux tests ici, puis une dictée avec la bulle, " +
+        "et copiez le journal.") {
+        if (!hasMic) Text("✗ Le micro n'est pas autorisé (étape 1 de Mise en route).", color = MaterialTheme.colorScheme.error)
+
+        Text("1. Micro brut (3 s, parlez)", style = MaterialTheme.typography.labelLarge)
+        LinearProgressIndicator(progress = { micLevel }, modifier = Modifier.fillMaxWidth())
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FilledTonalButton(enabled = hasMic && !micRunning, onClick = {
+                micRunning = true; micResult = null
+                scope.launch {
+                    val peak = rawMicPeak { micLevel = it }
+                    micLevel = 0f; micRunning = false
+                    micResult = when {
+                        peak == null -> "✗ Impossible d'ouvrir le micro (une autre app l'utilise ?)"
+                        peak < 0.02f -> "✗ Silence total : le micro ne capte rien"
+                        else -> "✓ Le micro fonctionne (pic ${(peak * 100).toInt()} %)"
+                    }
+                    DiagnosticLog.add("Test micro brut : ${micResult}")
+                }
+            }) { Text(if (micRunning) "Écoute…" else "Tester le micro") }
+            Spacer(Modifier.width(10.dp))
+            micResult?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+
+        Text("2. Reconnaissance vocale (${SpeechEngine.languageTag(s.language)})", style = MaterialTheme.typography.labelLarge)
+        LinearProgressIndicator(progress = { recoLevel }, modifier = Modifier.fillMaxWidth())
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FilledTonalButton(enabled = hasMic, onClick = {
+                recoStatus = "Démarrage…"
+                engine.start(s.language, s.offlineOnly, continuous = false)
+            }) { Text("Tester") }
+            Spacer(Modifier.width(10.dp))
+            recoStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+
+        Text("3. Journal (sans le texte dicté)", style = MaterialTheme.typography.labelLarge)
+        Text(
+            if (log.isEmpty()) "Vide. Faites une dictée avec la bulle dans une autre app, puis revenez ici." else log.takeLast(25).joinToString("\n"),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                val info = "Voice Typer ${context.packageManager.getPackageInfo(context.packageName, 0).versionName} · " +
+                    "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n"
+                context.getSystemService(android.content.ClipboardManager::class.java)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Diagnostic Voice Typer", info + DiagnosticLog.text()))
+            }) { Text("Copier le journal") }
+            TextButton(onClick = { DiagnosticLog.clear() }) { Text("Effacer") }
+        }
     }
 }

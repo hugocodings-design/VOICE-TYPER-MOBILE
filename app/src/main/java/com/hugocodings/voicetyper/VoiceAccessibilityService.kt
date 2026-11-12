@@ -40,6 +40,18 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     private var dictationPreset: Preset? = null
     private var dictationPkg: String? = null
     private var lastDictation: String = ""
+    /** Dictation about to start (waiting for the mic service): a tap or long press cancels it. */
+    private var pendingStart: Runnable? = null
+
+    private fun cancelPendingStart(): Boolean {
+        val p = pendingStart ?: return false
+        main.removeCallbacks(p)
+        pendingStart = null
+        MicService.stop(this)
+        overlay.bubble.state = BubbleView.State.IDLE
+        overlay.showCaption("Dictée annulée", 1200)
+        return true
+    }
 
     private val settings get() = SettingsRepository.current
 
@@ -101,6 +113,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     // ---- bubble ----
 
     override fun onBubbleTap() {
+        if (cancelPendingStart()) return
         if (speech.isActive) {
             overlay.bubble.state = BubbleView.State.WORKING
             speech.stop()
@@ -110,6 +123,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     }
 
     override fun onBubbleLongPress() {
+        if (cancelPendingStart()) return
         if (speech.isActive) { // long press while listening = cancel (like Esc on desktop)
             speech.cancel()
             MicService.stop(this)
@@ -168,6 +182,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         }
         dictationPreset = preset
         dictationPkg = targetPkg
+        DiagnosticLog.add("Dictée dans ${targetPkg ?: "?"} (préréglage ${preset.id})")
         overlay.hideMenu()
         MicService.start(this)
         haptic()
@@ -175,7 +190,11 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val s = settings
         val lang = preset.language ?: s.language
         overlay.showCaption("${preset.name} · ${SpeechEngine.languageTag(lang)} — parlez…")
-        speech.start(lang, s.offlineOnly, s.tapToStop)
+        // give the microphone foreground service time to be up before the recognizer opens the mic:
+        // Android hands silence to a background app that opens it too early
+        val start = Runnable { pendingStart = null; speech.start(lang, s.offlineOnly, s.tapToStop) }
+        pendingStart = start
+        main.postDelayed(start, 400)
     }
 
     override fun onListening() {}
@@ -197,7 +216,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
                 val ok = node != null && inserter.undo(node)
                 overlay.showCaption(if (ok) "Dernière dictée effacée" else "Rien à effacer ici", 1500)
             }
-            result.text.isBlank() -> overlay.showCaption("Rien entendu", 1500)
+            result.text.isBlank() -> overlay.showCaption(
+                if (speech.maxRms < 1f) "Le micro ne capte rien (voir Diagnostic dans Voice Typer)" else "Rien reconnu", 3000)
             else -> {
                 lastDictation = result.text
                 overlay.hideCaption()
@@ -223,7 +243,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
     private fun write(text: String, keepCase: Boolean) {
         val node = currentTarget()
-        if (node != null && inserter.insert(node, text, keepCase)) return
+        if (node != null && inserter.insert(node, text, keepCase)) { DiagnosticLog.add("Texte écrit dans le champ"); return }
+        DiagnosticLog.add("Champ introuvable ou refusé : texte copié")
         // field not reachable (some games / secure fields): leave it on the clipboard
         getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Voice Typer", text))
         overlay.showCaption("Champ inaccessible : le texte est copié, collez-le", 3000)

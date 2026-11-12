@@ -32,7 +32,8 @@ class MicService : Service() {
         runCatching {
             ServiceCompat.startForeground(this, 1, notification,
                 if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
-        }.onFailure { stopSelf() }
+        }.onSuccess { DiagnosticLog.add("Service micro (premier plan) démarré") }
+            .onFailure { DiagnosticLog.add("Service micro refusé : ${it.javaClass.simpleName} ${it.message.orEmpty().take(120)}"); stopSelf() }
         return START_NOT_STICKY
     }
 
@@ -41,6 +42,7 @@ class MicService : Service() {
 
         fun start(context: Context) {
             runCatching { context.startForegroundService(Intent(context, MicService::class.java)) }
+                .onFailure { DiagnosticLog.add("Service micro non lancé : ${it.javaClass.simpleName} ${it.message.orEmpty().take(120)}") }
         }
 
         fun stop(context: Context) {

@@ -25,7 +25,8 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - `TextInserter` — ACTION_SET_TEXT + ACTION_SET_SELECTION, fallback clipboard (EXTRA_IS_SENSITIVE) + ACTION_PASTE; undo of the last insert
   - `MicService` — foreground service type microphone while dictating (best effort)
   - `SettingsRepository` — StateFlow shared by service and activity (same process), SharedPreferences JSON
-  - `MainActivity` — single Compose screen: setup steps, try field, language, presets, per-app, dictionary, signature, bubble, commands
+  - `DiagnosticLog` — in-memory event log (never dictated text) shown/copied in the Diagnostic card (raw AudioRecord peak test + recognizer test)
+  - `MainActivity` — single Compose screen: setup steps, try field, diagnostic, language, presets, per-app, dictionary, signature, bubble, commands
 
 ## Build
 - No Android SDK in cloud sessions (dl.google.com blocked): run core tests with `-PcoreOnly`; the APK is
