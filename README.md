@@ -67,4 +67,7 @@ Sur le téléphone : ouvrez l'APK (autorisez « sources inconnues »), puis dans
 - `app/` : l'application Android (Kotlin, Jetpack Compose). Il faut le SDK Android (Android Studio) :
   `./gradlew :app:assembleDebug`
 
-L'APK release est signé avec la clé de debug tant qu'une vraie clé n'est pas configurée.
+Toutes les versions sont signées avec la même clé, gardée dans les secrets GitHub du dépôt
+(`VT_KEYSTORE_B64`, `VT_KEYSTORE_PASSWORD`), pour que les mises à jour s'installent par-dessus. Sans ces
+secrets, la CI compile mais ne publie pas de release. Les versions ≤ 0.3.0 avaient une clé différente à chaque
+build : désinstallez-les une fois avant d'installer la 0.3.1.

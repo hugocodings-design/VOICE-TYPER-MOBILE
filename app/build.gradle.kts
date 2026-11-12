@@ -12,10 +12,11 @@ android {
         applicationId = "com.hugocodings.voicetyper.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.3.0"
-        // Whisper (whisper.cpp) is compiled for 64-bit ARM phones only; others keep Android recognition.
-        ndk { abiFilters += listOf("arm64-v8a") }
+        versionCode = 6
+        versionName = "0.3.1"
+        // Whisper (whisper.cpp) for ARM phones, 64-bit and 32-bit (some phones run 32-bit Android):
+        // an APK whose native code matches no ABI of the phone cannot be installed at all.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
     }
     externalNativeBuild {
@@ -25,12 +26,28 @@ android {
         }
     }
 
+    // One fixed key for every build: Android refuses an update signed with another key ("App not installed"),
+    // and CI runners create a new random debug key each time. The key comes from GitHub secrets
+    // (VT_KEYSTORE_B64 → file VT_KEYSTORE, VT_KEYSTORE_PASSWORD); without them, the debug key is used.
+    val sideloadKey = System.getenv("VT_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (sideloadKey != null) create("sideload") {
+            storeFile = sideloadKey
+            storePassword = System.getenv("VT_KEYSTORE_PASSWORD")
+            keyAlias = "voicetyper"
+            keyPassword = System.getenv("VT_KEYSTORE_PASSWORD")
+        }
+    }
+    val signing = signingConfigs.findByName("sideload") ?: signingConfigs.getByName("debug")
+
     buildTypes {
+        debug {
+            signingConfig = signing
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key until a release keystore is set up (see README).
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signing
         }
     }
     compileOptions {

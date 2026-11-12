@@ -25,7 +25,7 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     concatenate segments. Main thread only
   - `TextInserter` — ACTION_SET_TEXT + ACTION_SET_SELECTION, fallback clipboard (EXTRA_IS_SENSITIVE) + ACTION_PASTE; undo of the last insert
   - Whisper path (`Settings.engine == WHISPER` + downloaded model, else falls back to Android recognition):
-    `app/src/main/cpp` (whisper.cpp v1.9.5 via CMake FetchContent, static, arm64-v8a only, `whisper_jni.cpp`),
+    `app/src/main/cpp` (whisper.cpp v1.9.5 via CMake FetchContent, static, arm64-v8a + armeabi-v7a, `whisper_jni.cpp`),
     `WhisperNative` (JNI), `WhisperEngine` (one model kept loaded, preloaded by the service), `AudioCapture`
     (16 kHz AudioRecord, levels, silence auto-stop), `ModelManager` (download to filesDir/models, `.part` then rename).
     Silence (max level < 1) is never sent to Whisper; `Text.stripWhisperHallucinations` cleans the output;
@@ -39,5 +39,8 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
 - No Android SDK in cloud sessions (dl.google.com blocked): run core tests with `-PcoreOnly`; the APK is
   built by `.github/workflows/build.yml` (artifact + a GitHub release per new `versionName`, created by CI —
   cloud sessions may not push tags or create releases themselves). Release = bump `versionCode`/`versionName`.
+- Signing: one fixed key from GitHub secrets `VT_KEYSTORE_B64` + `VT_KEYSTORE_PASSWORD` (alias `voicetyper`),
+  never in the repo; without them CI signs with a random debug key and publishes no release. Never change the
+  key (users would have to uninstall). ABIs: arm64-v8a + armeabi-v7a.
 - Cloud sessions may not compile whisper.cpp (external code); the native part is only built by CI.
 - Plugin versions live in `settings.gradle.kts` (`pluginManagement.plugins`), so `-PcoreOnly` never resolves AGP.

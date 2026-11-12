@@ -19,9 +19,21 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key (secrets)
+        env:
+          VT_KEYSTORE_B64: ${{ secrets.VT_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$VT_KEYSTORE_B64" ]; then
+            echo "$VT_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/voicetyper.jks"
+            echo "VT_KEYSTORE=$RUNNER_TEMP/voicetyper.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Secret VT_KEYSTORE_B64 missing: APK signed with a random debug key, no release published."
+          fi
       - name: Tests (logique de texte)
         run: ./gradlew :core:test --console=plain
       - name: APK
+        env:
+          VT_KEYSTORE_PASSWORD: ${{ secrets.VT_KEYSTORE_PASSWORD }}
         run: ./gradlew :app:assembleDebug :app:assembleRelease --console=plain
       - uses: actions/upload-artifact@v4
         with:
@@ -30,7 +42,8 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/release/app-release.apk
       - name: Release (one per versionName, on main)
-        if: github.event_name == 'push'
+        # only with the fixed key: an APK signed with a random key cannot update the installed app
+        if: github.event_name == 'push' && env.VT_KEYSTORE != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
