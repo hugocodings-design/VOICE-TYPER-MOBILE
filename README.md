@@ -42,8 +42,9 @@ mis en forme selon le **préréglage de l'application**, puis écrit là où se 
 
 ## Installer
 
-Chaque push sur `main` compile l'APK dans GitHub Actions (onglet **Actions** → dernier « Build APK » →
-artefact `voice-typer-mobile-apk`). Un tag `v0.1.0` crée une release avec l'APK.
+Chaque push sur `main` compile l'APK dans GitHub Actions. Pour chaque nouvelle version (`versionName` dans
+`app/build.gradle.kts`), une **release** est publiée avec l'APK : ouvrez **Releases** depuis le téléphone et
+touchez `VoiceTyperMobile-vX.Y.Z.apk`.
 
 Sur le téléphone : ouvrez l'APK (autorisez « sources inconnues »), puis dans Voice Typer :
 1. **Micro** → Autoriser

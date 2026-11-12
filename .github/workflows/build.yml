@@ -3,7 +3,6 @@ name: Build APK
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -14,8 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -30,10 +29,15 @@ jobs:
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/release/app-release.apk
-      - name: Release (tags v*)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release (one per versionName, on main)
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk "VoiceTyperMobile-${GITHUB_REF_NAME}.apk"
-          gh release create "$GITHUB_REF_NAME" "VoiceTyperMobile-${GITHUB_REF_NAME}.apk" --title "$GITHUB_REF_NAME" --generate-notes
+          V="v$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)"
+          if gh release view "$V" >/dev/null 2>&1; then
+            echo "Release $V already exists: bump versionName in app/build.gradle.kts to publish a new one."
+            exit 0
+          fi
+          cp app/build/outputs/apk/release/app-release.apk "VoiceTyperMobile-$V.apk"
+          gh release create "$V" "VoiceTyperMobile-$V.apk" --target "$GITHUB_SHA" --title "Voice Typer Mobile $V" --generate-notes

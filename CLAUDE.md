@@ -29,5 +29,6 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
 
 ## Build
 - No Android SDK in cloud sessions (dl.google.com blocked): run core tests with `-PcoreOnly`; the APK is
-  built by `.github/workflows/build.yml` (artifact; tag `v*` → GitHub release).
+  built by `.github/workflows/build.yml` (artifact + a GitHub release per new `versionName`, created by CI —
+  cloud sessions may not push tags or create releases themselves). Release = bump `versionCode`/`versionName`.
 - Plugin versions live in `settings.gradle.kts` (`pluginManagement.plugins`), so `-PcoreOnly` never resolves AGP.
