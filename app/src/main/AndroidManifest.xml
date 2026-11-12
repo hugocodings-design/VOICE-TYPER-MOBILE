@@ -6,7 +6,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- No INTERNET permission: the app itself can never send anything over the network. -->
+    <!-- Internet is used ONLY to download Whisper models from Hugging Face (Moteur de reconnaissance).
+         Audio and text never leave the phone. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
         <!-- Android 11+: required to see the phone's speech recognition service -->

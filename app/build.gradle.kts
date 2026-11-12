@@ -12,8 +12,17 @@ android {
         applicationId = "com.hugocodings.voicetyper.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.3.0"
+        // Whisper (whisper.cpp) is compiled for 64-bit ARM phones only; others keep Android recognition.
+        ndk { abiFilters += listOf("arm64-v8a") }
+        externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     buildTypes {

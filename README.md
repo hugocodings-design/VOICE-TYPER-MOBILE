@@ -15,8 +15,11 @@ mis en forme selon le **préréglage de l'application**, puis écrit là où se 
 - [x] Toucher = commencer / toucher = arrêter (dictée longue : la reconnaissance redémarre après chaque pause),
       ou arrêt automatique au silence
 - [x] Transcription en direct au-dessus de la bulle, niveau du micro animé
-- [x] **Reconnaissance sur l'appareil** (Android 12+), mode « Hors ligne seulement » par défaut ;
-      l'application n'a **pas** la permission Internet
+- [x] **Whisper sur le téléphone** (whisper.cpp), comme au PC : choix du modèle (Tiny, Base, Small
+      recommandé, Large v3 Turbo) avec taille / vitesse / précision, téléchargement en un clic, test intégré.
+      Le dictionnaire sert d'indice à Whisper (comme les `hotwords` du PC). Internet sert **uniquement** à
+      télécharger les modèles ; l'audio et le texte ne quittent jamais le téléphone
+- [x] Ou **reconnaissance Android** sur l'appareil (Android 12+), mode « Hors ligne seulement » par défaut
 - [x] **Préréglages** (comme les préréglages d'écriture du PC) : Normal, Message rapide, Courriel
       (salutation avec le nom dicté, petits paragraphes, formule de politesse, signature), Notes en points,
       Brut ; créez les vôtres (style, langue, texte avant/après, couleur)
@@ -35,8 +38,7 @@ mis en forme selon le **préréglage de l'application**, puis écrit là où se 
 
 ## Feuille de route
 
-1. **Whisper sur l'appareil** (whisper.cpp, modèles base/small) pour la même qualité qu'au PC, sans dépendre
-   du service de reconnaissance de Google
+1. Transcription Whisper en direct pendant la dictée, versions optimisées pour les processeurs récents
 2. **Réécriture IA locale** des préréglages (petit LLM sur l'appareil, comme Qwen au PC) au lieu des règles
 3. Import des réglages exportés du PC (dictionnaire, préréglages, signature)
 4. Clavier iOS / Android en complément de la bulle

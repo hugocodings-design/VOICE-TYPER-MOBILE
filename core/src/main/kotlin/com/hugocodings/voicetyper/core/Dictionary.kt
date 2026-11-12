@@ -17,6 +17,14 @@ object Dictionary {
         return rule.replacements + general.filter { it.from.trim().lowercase() !in overridden }
     }
 
+    /**
+     * Words Whisper should expect (the replacement targets, e.g. "ChatGPT"), as an initial prompt —
+     * the mobile equivalent of the desktop `hotwords`. Null when there is nothing to hint.
+     */
+    fun whisperPrompt(replacements: List<Replacement>): String? =
+        replacements.map { it.to.trim() }.filter { it.isNotEmpty() && it.length <= 40 }.distinct()
+            .take(30).joinToString(", ").ifEmpty { null }
+
     /** Whole words/phrases, ignoring case: "chat GPT" → "ChatGPT". */
     fun apply(text: String, replacements: List<Replacement>): String {
         var out = text

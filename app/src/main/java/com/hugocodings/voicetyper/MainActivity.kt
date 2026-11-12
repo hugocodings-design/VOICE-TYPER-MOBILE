@@ -43,12 +43,16 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hugocodings.voicetyper.core.BubbleMode
+import com.hugocodings.voicetyper.core.Engine
+import com.hugocodings.voicetyper.core.ModelCatalog
+import com.hugocodings.voicetyper.core.WhisperModel
 import com.hugocodings.voicetyper.core.Lang
 import com.hugocodings.voicetyper.core.Preset
 import com.hugocodings.voicetyper.core.Replacement
 import com.hugocodings.voicetyper.core.Settings
 import com.hugocodings.voicetyper.core.Style
 import com.hugocodings.voicetyper.core.VoiceCommands
+import com.hugocodings.voicetyper.core.Text as CoreText
 import kotlinx.coroutines.launch
 
 private val Green = Color(0xFF22C55E)
@@ -86,6 +90,7 @@ private fun Screen() {
             item { StatusCard() }
             item { TryCard() }
             item { DiagnosticCard(s) }
+            item { EngineCard(s) }
             item { LanguageCard(s) }
             item { PresetsCard(s, onEdit = { editing = it }) }
             item { AppRulesCard(s, onAdd = { pickingApp = true }) }
@@ -161,7 +166,7 @@ private fun StatusCard() {
             if (!service) {
                 Text(
                     "Android affiche un avertissement en activant un service d'accessibilité : Voice Typer ne lit " +
-                        "que le champ de texte actif et le nom de l'application, et n'a pas accès à Internet.",
+                        "que le champ de texte actif et le nom de l'application ; ni l'audio ni le texte ne quittent le téléphone.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (Build.VERSION.SDK_INT >= 33) {
@@ -579,5 +584,129 @@ private fun DiagnosticCard(s: Settings) {
             }) { Text("Copier le journal") }
             TextButton(onClick = { DiagnosticLog.clear() }) { Text("Effacer") }
         }
+    }
+}
+
+// ---------------- engine / Whisper models ----------------
+
+private fun dots(n: Int) = "●".repeat(n) + "○".repeat(5 - n)
+
+@Composable
+private fun EngineCard(s: Settings) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val progress by ModelManager.progress.collectAsStateWithLifecycle()
+    val version by ModelManager.version.collectAsStateWithLifecycle()
+    var error by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf<WhisperModel?>(null) }
+
+    Section("Moteur de reconnaissance",
+        "Whisper = le même moteur d'IA que Voice Typer sur PC, exécuté sur le téléphone, hors ligne. " +
+            "Téléchargez un modèle une fois (Wi-Fi conseillé), puis choisissez-le.") {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(s.engine == Engine.WHISPER, { update { it.copy(engine = Engine.WHISPER) } }, { Text("Whisper (local)") })
+            FilterChip(s.engine == Engine.ANDROID, { update { it.copy(engine = Engine.ANDROID) } }, { Text("Reconnaissance Android") })
+        }
+        if (!WhisperNative.available) {
+            Text("Whisper n'est pas pris en charge sur ce téléphone (processeur non 64 bits).", color = MaterialTheme.colorScheme.error)
+        }
+        key(version) {
+            ModelCatalog.MODELS.forEach { m ->
+                val downloaded = ModelManager.isDownloaded(context, m)
+                val p = progress[m.id]
+                val selected = s.whisperModel == m.id
+                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = selected, enabled = downloaded,
+                            onClick = { update { it.copy(whisperModel = m.id, engine = Engine.WHISPER) } })
+                        Column(Modifier.weight(1f)) {
+                            Text(m.name + (if (m.id == ModelCatalog.RECOMMENDED) "  (recommandé)" else ""),
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                            Text("${m.sizeMb} Mo · vitesse ${dots(m.speed)} · précision ${dots(m.accuracy)}",
+                                style = MaterialTheme.typography.bodySmall)
+                            Text(m.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        when {
+                            p != null -> TextButton(onClick = { ModelManager.cancel(m) }) { Text("Annuler") }
+                            downloaded -> IconButton(onClick = { confirmDelete = m }) { Icon(Icons.Filled.Delete, "Supprimer") }
+                            else -> FilledTonalButton(onClick = {
+                                error = null
+                                scope.launch {
+                                    val err = ModelManager.download(context, m)
+                                    if (err != null) error = err
+                                    else if (!ModelManager.isDownloaded(context, ModelCatalog.byId(s.whisperModel) ?: m) || s.engine == Engine.ANDROID) {
+                                        update { it.copy(whisperModel = m.id, engine = Engine.WHISPER) }
+                                    }
+                                }
+                            }) { Text("Télécharger") }
+                        }
+                    }
+                    if (p != null) LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        val active = ModelCatalog.byId(s.whisperModel)
+        if (s.engine == Engine.WHISPER && active != null && !ModelManager.isDownloaded(context, active)) {
+            Text("Le modèle choisi n'est pas téléchargé : la bulle utilise la reconnaissance Android en attendant.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        if (s.engine == Engine.WHISPER && active != null && ModelManager.isDownloaded(context, active)) WhisperTest(s, active)
+    }
+    confirmDelete?.let { m ->
+        AlertDialog(onDismissRequest = { confirmDelete = null },
+            title = { Text("Supprimer ${m.name} ?") },
+            text = { Text("Libère ${m.sizeMb} Mo. Vous pourrez le retélécharger.") },
+            confirmButton = { TextButton(onClick = { ModelManager.delete(context, m); confirmDelete = null }) { Text("Supprimer") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Annuler") } })
+    }
+}
+
+/** Records 5 s and transcribes with the selected model: checks speed and accuracy on this phone. */
+@Composable
+private fun WhisperTest(s: Settings, model: WhisperModel) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf<String?>(null) }
+    var level by remember { mutableFloatStateOf(0f) }
+    var busy by remember { mutableStateOf(false) }
+    val capture = remember {
+        AudioCapture(object : AudioCapture.Listener {
+            override fun onLevel(level0: Float) { level = ((level0 + 2f) / 12f).coerceIn(0f, 1f) }
+            override fun onSilenceStop() {}
+            override fun onCaptureError(message: String) { status = "✗ $message"; busy = false }
+        })
+    }
+    DisposableEffect(Unit) { onDispose { capture.stop() } }
+    HorizontalDivider()
+    Text("Tester ${model.name}", style = MaterialTheme.typography.labelLarge)
+    LinearProgressIndicator(progress = { level }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FilledTonalButton(enabled = !busy, onClick = {
+            busy = true
+            scope.launch {
+                status = "Chargement du modèle…"
+                WhisperEngine.ensureLoaded(context, model)?.let { status = "✗ $it"; busy = false; return@launch }
+                status = "Parlez pendant 5 secondes…"
+                capture.start(stopOnSilence = false)
+                kotlinx.coroutines.delay(5000)
+                val pcm = capture.stop()
+                level = 0f
+                status = "Transcription…"
+                val t0 = System.currentTimeMillis()
+                status = try {
+                    val text = CoreText.stripWhisperHallucinations(
+                        WhisperEngine.transcribe(context, model, pcm, s.language?.tag ?: "auto", null))
+                    val secs = (System.currentTimeMillis() - t0) / 1000f
+                    if (text.isBlank()) "✗ Rien reconnu (niveau max ${"%.1f".format(capture.maxLevel)})"
+                    else "✓ « $text » (${"%.1f".format(secs)} s)"
+                } catch (e: Exception) {
+                    "✗ ${e.message}"
+                }
+                busy = false
+            }
+        }) { Text(if (busy) "…" else "Tester") }
+        Spacer(Modifier.width(10.dp))
+        status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
 }

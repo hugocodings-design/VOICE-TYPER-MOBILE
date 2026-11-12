@@ -15,6 +15,13 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.content.ContextCompat
 import com.hugocodings.voicetyper.core.BubbleMode
+import com.hugocodings.voicetyper.core.Dictionary
+import com.hugocodings.voicetyper.core.Engine
+import com.hugocodings.voicetyper.core.ModelCatalog
+import com.hugocodings.voicetyper.core.Settings
+import com.hugocodings.voicetyper.core.Text
+import com.hugocodings.voicetyper.core.WhisperModel
+import kotlinx.coroutines.Job
 import com.hugocodings.voicetyper.core.Lang
 import com.hugocodings.voicetyper.core.Pipeline
 import com.hugocodings.voicetyper.core.Preset
@@ -27,7 +34,8 @@ import kotlinx.coroutines.launch
  * The heart of the app: watches which text field has focus (any app), shows the floating mic bubble,
  * runs the dictation and writes the result into that field with the app's preset.
  */
-class VoiceAccessibilityService : AccessibilityService(), OverlayController.Callbacks, SpeechEngine.Listener {
+class VoiceAccessibilityService : AccessibilityService(), OverlayController.Callbacks, SpeechEngine.Listener,
+    AudioCapture.Listener {
 
     private val scope = MainScope()
     private val main = Handler(Looper.getMainLooper())
@@ -42,6 +50,16 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     private var lastDictation: String = ""
     /** Dictation about to start (waiting for the mic service): a tap or long press cancels it. */
     private var pendingStart: Runnable? = null
+    /** Whisper path: recording with [capture], then [transcribing] in the background. */
+    private lateinit var capture: AudioCapture
+    private var capturing = false
+    private var transcribing: Job? = null
+    private var dictationLang: Lang? = null
+    /** Loudest level of the last dictation (either engine): tells "mic hears nothing" from "nothing recognized". */
+    private var lastMaxLevel = -100f
+
+    /** True during any dictation step (listening, recording, transcribing). */
+    private val busy: Boolean get() = speech.isActive || capturing || transcribing?.isActive == true
 
     private fun cancelPendingStart(): Boolean {
         val p = pendingStart ?: return false
@@ -60,6 +78,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         SettingsRepository.init(this)
         overlay = OverlayController(this, this)
         speech = SpeechEngine(this, this)
+        capture = AudioCapture(this)
         inserter = TextInserter(this)
         running = true
         scope.launch {
@@ -68,6 +87,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
                     overlay.resizeBubble(it.bubbleSizeDp)
                     refreshBubble()
                 }
+                preloadWhisper(it)
             }
         }
     }
@@ -97,23 +117,25 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val activePkg = focused?.packageName?.toString() ?: rootInActiveWindow?.packageName?.toString()
         val s = settings
         val hiddenHere = activePkg != null && activePkg in s.hiddenApps
-        val show = speech.isActive || (!hiddenHere && (s.bubbleMode == BubbleMode.ALWAYS || typing))
+        val show = busy || (!hiddenHere && (s.bubbleMode == BubbleMode.ALWAYS || typing))
 
         main.removeCallbacks(hideLater)
         if (show) {
             overlay.showBubble(s.bubbleSizeDp, s.bubbleX, s.bubbleY)
-            if (!speech.isActive) overlay.bubble.label = languageBadge()
+            if (!busy) overlay.bubble.label = languageBadge()
         } else {
             main.postDelayed(hideLater, 700) // the keyboard flickers between fields/screens: don't blink
         }
     }
 
-    private val hideLater = Runnable { if (!speech.isActive) overlay.hideBubble() }
+    private val hideLater = Runnable { if (!busy) overlay.hideBubble() }
 
     // ---- bubble ----
 
     override fun onBubbleTap() {
         if (cancelPendingStart()) return
+        if (capturing) { finishWhisperRecording(); return }
+        if (transcribing?.isActive == true) { overlay.showCaption("Transcription en cours…"); return }
         if (speech.isActive) {
             overlay.bubble.state = BubbleView.State.WORKING
             speech.stop()
@@ -124,6 +146,15 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
     override fun onBubbleLongPress() {
         if (cancelPendingStart()) return
+        if (capturing || transcribing?.isActive == true) {
+            capturing = false
+            capture.stop()
+            transcribing?.cancel(); WhisperEngine.abort()
+            MicService.stop(this)
+            overlay.bubble.state = BubbleView.State.IDLE
+            overlay.showCaption("Dictée annulée", 1500)
+            return
+        }
         if (speech.isActive) { // long press while listening = cancel (like Esc on desktop)
             speech.cancel()
             MicService.stop(this)
@@ -182,6 +213,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         }
         dictationPreset = preset
         dictationPkg = targetPkg
+        lastMaxLevel = -100f
         DiagnosticLog.add("Dictée dans ${targetPkg ?: "?"} (préréglage ${preset.id})")
         overlay.hideMenu()
         MicService.start(this)
@@ -189,15 +221,78 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         overlay.bubble.state = BubbleView.State.LISTENING
         val s = settings
         val lang = preset.language ?: s.language
-        overlay.showCaption("${preset.name} · ${SpeechEngine.languageTag(lang)} — parlez…")
-        // give the microphone foreground service time to be up before the recognizer opens the mic:
+        dictationLang = lang
+        val model = whisperModelIfReady(s)
+        if (s.engine == Engine.WHISPER && model == null) {
+            DiagnosticLog.add("Whisper choisi mais modèle ${s.whisperModel} absent : reconnaissance Android")
+        }
+        val engineName = if (model != null) "Whisper ${model.name}" else SpeechEngine.languageTag(lang)
+        overlay.showCaption("${preset.name} · $engineName · ${lang?.tag ?: "auto"} — parlez…")
+        // give the microphone foreground service time to be up before the mic is opened:
         // Android hands silence to a background app that opens it too early
-        val start = Runnable { pendingStart = null; speech.start(lang, s.offlineOnly, s.tapToStop) }
+        val start = Runnable {
+            pendingStart = null
+            if (model != null) { capturing = true; capture.start(stopOnSilence = !s.tapToStop) }
+            else speech.start(lang, s.offlineOnly, s.tapToStop)
+        }
         pendingStart = start
         main.postDelayed(start, 400)
     }
 
     override fun onListening() {}
+
+    // ---- Whisper path ----
+
+    private fun whisperModelIfReady(s: Settings): WhisperModel? {
+        if (s.engine != Engine.WHISPER || !WhisperNative.available) return null
+        return ModelCatalog.byId(s.whisperModel)?.takeIf { ModelManager.isDownloaded(this, it) }
+    }
+
+    private var preloaded: String? = null
+
+    /** Load the model as soon as Whisper is chosen, so the first dictation does not wait for it. */
+    private fun preloadWhisper(s: Settings) {
+        val model = whisperModelIfReady(s) ?: return
+        if (preloaded == model.id) return
+        preloaded = model.id
+        scope.launch { WhisperEngine.ensureLoaded(this@VoiceAccessibilityService, model)?.let { DiagnosticLog.add(it) } }
+    }
+
+    override fun onSilenceStop() { if (capturing) finishWhisperRecording() }
+
+    override fun onCaptureError(message: String) {
+        capturing = false
+        onError(message)
+    }
+
+    private fun finishWhisperRecording() {
+        capturing = false
+        val pcm = capture.stop()
+        lastMaxLevel = capture.maxLevel
+        MicService.stop(this)
+        val model = ModelCatalog.byId(settings.whisperModel) ?: return onError("Modèle inconnu")
+        if (lastMaxLevel < 1f) { // pure silence: Whisper would only invent captions
+            DiagnosticLog.add("Capture : silence (niveau max ${"%.1f".format(lastMaxLevel)})")
+            return deliverFinal("")
+        }
+        overlay.bubble.state = BubbleView.State.WORKING
+        overlay.showCaption("Transcription (Whisper ${model.name})…")
+        val lang = dictationLang?.tag ?: "auto"
+        val prompt = Dictionary.whisperPrompt(settings.replacements)
+        transcribing = scope.launch {
+            val text = try {
+                WhisperEngine.transcribe(this@VoiceAccessibilityService, model, pcm, lang, prompt)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                transcribing = null
+                onError(e.message ?: "La transcription a échoué")
+                return@launch
+            }
+            transcribing = null
+            deliverFinal(Text.stripWhisperHallucinations(text))
+        }
+    }
 
     override fun onLevel(rmsDb: Float) = overlay.bubble.setLevel(rmsDb)
 
@@ -206,6 +301,11 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     }
 
     override fun onFinal(text: String) {
+        if (!capturing && transcribing == null) lastMaxLevel = maxOf(lastMaxLevel, speech.maxRms)
+        deliverFinal(text)
+    }
+
+    private fun deliverFinal(text: String) {
         MicService.stop(this)
         overlay.bubble.state = BubbleView.State.IDLE
         val preset = dictationPreset ?: settings.presetFor(targetPkg)
@@ -217,7 +317,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
                 overlay.showCaption(if (ok) "Dernière dictée effacée" else "Rien à effacer ici", 1500)
             }
             result.text.isBlank() -> overlay.showCaption(
-                if (speech.maxRms < 1f) "Le micro ne capte rien (voir Diagnostic dans Voice Typer)" else "Rien reconnu", 3000)
+                if (lastMaxLevel < 1f) "Le micro ne capte rien (voir Diagnostic dans Voice Typer)" else "Rien reconnu", 3000)
             else -> {
                 lastDictation = result.text
                 overlay.hideCaption()
@@ -272,6 +372,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     override fun onUnbind(intent: Intent?): Boolean {
         running = false
         if (::speech.isInitialized) speech.cancel()
+        if (::capture.isInitialized) { capturing = false; capture.stop() }
+        transcribing?.cancel()
         if (::overlay.isInitialized) overlay.hideBubble()
         MicService.stop(this)
         return super.onUnbind(intent)

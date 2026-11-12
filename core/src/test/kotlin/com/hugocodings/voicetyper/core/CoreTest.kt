@@ -52,6 +52,13 @@ class TextTest {
         assertEquals("I think so", Text.removeFillers("um I think uh so", Lang.EN))
     }
 
+    @Test fun whisperHallucinationsRemoved() {
+        assertEquals("", Text.stripWhisperHallucinations("Sous-titrage Société Radio-Canada"))
+        assertEquals("", Text.stripWhisperHallucinations(" [BLANK_AUDIO] "))
+        assertEquals("Bonjour Marc", Text.stripWhisperHallucinations("Bonjour Marc [Musique]"))
+        assertEquals("Merci pour le rapport.", Text.stripWhisperHallucinations("Merci pour le rapport."))
+    }
+
     @Test fun fillerInsideWordIsKept() {
         assertEquals("Heureux", Text.removeFillers("Heureux", Lang.FR))
     }
@@ -67,6 +74,16 @@ class DictionaryTest {
         val r = listOf(Replacement("chat GPT", "ChatGPT"))
         assertEquals("J'utilise ChatGPT tous les jours", Dictionary.apply("J'utilise Chat  gpt tous les jours", r))
         assertEquals("chat GPTx", Dictionary.apply("chat GPTx", r))
+    }
+
+    @Test fun whisperPromptFromReplacementTargets() {
+        assertEquals("ChatGPT, CV", Dictionary.whisperPrompt(listOf(Replacement("chat GPT", "ChatGPT"), Replacement("cv", "CV"), Replacement("x", " "))))
+        assertEquals(null, Dictionary.whisperPrompt(emptyList()))
+    }
+
+    @Test fun catalogHasRecommendedModel() {
+        assertTrue(ModelCatalog.byId(ModelCatalog.RECOMMENDED) != null)
+        assertTrue(ModelCatalog.MODELS.all { it.url.startsWith("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-") })
     }
 
     @Test fun appEntryOverridesGeneral() {

@@ -25,6 +25,9 @@ data class Settings(
     val bubbleY: Int = -1,
     val bubbleSizeDp: Int = 56,
     val trailingSpace: Boolean = true,
+    /** ANDROID = the phone's speech service; WHISPER = a downloaded Whisper model run by the app. */
+    val engine: Engine = Engine.ANDROID,
+    val whisperModel: String = ModelCatalog.RECOMMENDED,
     /** Only use the on-device recognizer (nothing leaves the phone). */
     val offlineOnly: Boolean = true,
     val haptics: Boolean = true,

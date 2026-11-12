@@ -26,6 +26,22 @@ object Text {
     fun sentences(text: String): List<String> =
         text.split(Regex("(?<=[.!?…])\\s+|\\n+")).map { it.trim() }.filter { it.isNotEmpty() }
 
+    private val HALLUCINATIONS = listOf(
+        Regex("(?i)\\[\\s*(blank_audio|musique|music|applaudissements|rires|silence)\\s*]"),
+        Regex("(?i)\\(\\s*(musique|music|applaudissements|rires|silence)\\s*\\)"),
+        Regex("(?i)sous-titr(age|es|é)[^.\\n]*(radio-canada|amara\\.org|st' ?\\d+|par la communauté)[^.\\n]*\\.?"),
+        Regex("(?i)merci d'avoir regardé( cette vidéo)?[ !.]*"),
+        Regex("(?i)(thanks|thank you) for watching[ !.]*"),
+        Regex("(?i)abonnez-vous[^.\\n]*\\.?"),
+    )
+
+    /** Removes the captions Whisper invents on silence or noise ("Sous-titrage Société Radio-Canada"). */
+    fun stripWhisperHallucinations(text: String): String {
+        var t = text
+        for (re in HALLUCINATIONS) t = re.replace(t, "")
+        return t.replace(Regex("[ \\t]{2,}"), " ").trim()
+    }
+
     private val FILLERS = mapOf(
         Lang.FR to listOf("euh", "heu", "euhm", "hum", "hmm", "bah", "ben euh"),
         Lang.EN to listOf("uh", "um", "uhm", "erm", "hmm"),
