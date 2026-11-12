@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Voice Typer</string>
+    <string name="service_label">Voice Typer — bulle de dictée</string>
+    <string name="service_description">Affiche une bulle micro par-dessus vos applications. Touchez-la pour dicter : le texte est transcrit sur le téléphone, mis en forme selon le préréglage de l\'application (courriel, message, notes…) puis écrit dans le champ où se trouve le curseur. Voice Typer lit seulement le champ de texte actif et le nom de l\'application, rien n\'est envoyé sur Internet.</string>
+    <string name="mic_channel">Dictée en cours</string>
+    <string name="mic_notification">Voice Typer écoute…</string>
+</resources>
