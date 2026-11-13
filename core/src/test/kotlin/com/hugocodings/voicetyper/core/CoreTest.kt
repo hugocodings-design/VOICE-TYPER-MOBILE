@@ -209,3 +209,18 @@ class InsertionTest {
         assertEquals("a Ok b", Insertion.merge("a  b", 2, 2, "Ok ").text)
     }
 }
+
+class PcBoostSettingsTest {
+    @Test fun oldSettingsGetEmptyPcAddress() {
+        val s = Settings.decode("""{"settingsVersion":2,"engine":"WHISPER","whisperModel":"base"}""")
+        assertEquals(Engine.WHISPER, s.engine)
+        assertEquals("", s.pcAddress)
+    }
+
+    @Test fun pcEngineRoundTrips() {
+        val s = Settings(engine = Engine.PC, pcAddress = "mon-pc.tail1234.ts.net")
+        val back = Settings.decode(Settings.encode(s))
+        assertEquals(Engine.PC, back.engine)
+        assertEquals("mon-pc.tail1234.ts.net", back.pcAddress)
+    }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- « PC (boosté) »: the Whisper server on the user's PC is reached through Tailscale (`tailscale serve`, plain
+     HTTP inside the WireGuard-encrypted tailnet) at a name the user types: cleartext must be allowed for it.
+     Model downloads (huggingface.co) use HTTPS anyway. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

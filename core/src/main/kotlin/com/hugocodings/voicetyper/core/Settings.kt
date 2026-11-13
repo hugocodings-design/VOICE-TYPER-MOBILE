@@ -25,9 +25,11 @@ data class Settings(
     val bubbleY: Int = -1,
     val bubbleSizeDp: Int = 56,
     val trailingSpace: Boolean = true,
-    /** ANDROID = the phone's speech service; WHISPER = a downloaded Whisper model run by the app. */
+    /** ANDROID = the phone's speech service; WHISPER = a downloaded Whisper model run by the app; PC = the Whisper server on the user's PC. */
     val engine: Engine = Engine.ANDROID,
     val whisperModel: String = ModelCatalog.RECOMMENDED,
+    /** Tailscale name of the user's PC ("mon-pc.tailXXXX.ts.net", optional ":port", default 8766). */
+    val pcAddress: String = "",
     /** Only use the on-device recognizer (nothing leaves the phone). */
     val offlineOnly: Boolean = true,
     val haptics: Boolean = true,

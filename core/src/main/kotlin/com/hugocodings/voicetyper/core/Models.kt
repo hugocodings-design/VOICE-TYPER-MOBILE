@@ -2,9 +2,9 @@ package com.hugocodings.voicetyper.core
 
 import kotlinx.serialization.Serializable
 
-/** Which speech-to-text runs on the phone. */
+/** Which speech-to-text is used: the phone's service, Whisper on the phone, or Whisper on the user's PC (its Whisper server, via Tailscale). */
 @Serializable
-enum class Engine { ANDROID, WHISPER }
+enum class Engine { ANDROID, WHISPER, PC }
 
 /** A Whisper model (whisper.cpp ggml format) the app can download, like the desktop model manager. */
 data class WhisperModel(

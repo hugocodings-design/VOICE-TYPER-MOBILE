@@ -5,6 +5,7 @@ The Android counterpart of Voice Typer (Windows, repo `hugocodings-design/Voice-
 bubble over every app; tap → dictate → text is formatted by the app's preset and written into the focused
 field. **Local only**: on-device recognition; INTERNET is used only to download Whisper models from Hugging
 Face (audio/text never leave the phone). UI texts are in French.
+Exception, opt-in: engine « PC (boosté) » sends the audio to the Whisper server on the user's own PC, through Tailscale only.
 Android only: iOS forbids overlays and writing into other apps (a custom keyboard would be the iOS route).
 
 ## Layout
@@ -33,6 +34,14 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     (16 kHz AudioRecord, levels, silence auto-stop), `ModelManager` (download to filesDir/models, `.part` then rename).
     Silence (max level < 1) is never sent to Whisper; `Text.stripWhisperHallucinations` cleans the output;
     `Dictionary.whisperPrompt` = replacement targets as initial prompt. Catalog in core `Models.kt`
+  - PC path (`Settings.engine == PC` + `pcAddress` = the PC's Tailscale name `<pc>.<tailnet>.ts.net`): records with
+    `AudioCapture`, `PcEngine` POSTs a 16 kHz mono 16-bit WAV to `http://<name>:8766/transcribe?lang=fr|en` → `{"text"}`
+    (`GET /health` for the connection test). The server is **FLASH LINGO's** `tools/whisper_server.py` (bound to
+    127.0.0.1, exposed only by `tailscale serve --http 8766`, which answers 404 on the 100.x IP: use the name). No app-level
+    auth: Tailscale is the access control and encryption. Max 1 min of audio (server limit) → longer dictations and any
+    failure → Whisper on the phone (`downloadedWhisperFallback`) if a model is downloaded, else the error. Cleartext allowed
+    (`network_security_config`). Do not add a server to this repo or to desktop Voice Typer (that app must never open a
+    network port: IT requirement, work PC); one shared PC server serves FLASH LINGO and this app
   - `MicService` — foreground service type microphone while dictating (best effort); the recognizer starts 400 ms later
   - `SettingsRepository` — StateFlow shared by service and activity (same process), SharedPreferences JSON
   - `DiagnosticLog` — in-memory event log (never dictated text) shown/copied in the Diagnostic card (raw AudioRecord peak test + recognizer test)

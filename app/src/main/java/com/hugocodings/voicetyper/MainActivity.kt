@@ -602,11 +602,14 @@ private fun EngineCard(s: Settings) {
 
     Section("Moteur de reconnaissance",
         "Whisper = le même moteur d'IA que Voice Typer sur PC, exécuté sur le téléphone, hors ligne. " +
-            "Téléchargez un modèle une fois (Wi-Fi conseillé), puis choisissez-le.") {
+            "Téléchargez un modèle une fois (Wi-Fi conseillé), puis choisissez-le. " +
+            "PC (boosté) = votre PC fait le calcul avec sa carte graphique, par Tailscale.") {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(s.engine == Engine.WHISPER, { update { it.copy(engine = Engine.WHISPER) } }, { Text("Whisper (local)") })
-            FilterChip(s.engine == Engine.ANDROID, { update { it.copy(engine = Engine.ANDROID) } }, { Text("Reconnaissance Android") })
+            FilterChip(s.engine == Engine.PC, { update { it.copy(engine = Engine.PC) } }, { Text("PC (boosté)") })
         }
+        FilterChip(s.engine == Engine.ANDROID, { update { it.copy(engine = Engine.ANDROID) } }, { Text("Reconnaissance Android") })
+        if (s.engine == Engine.PC) PcBoostSettings(s)
         if (!WhisperNative.available) {
             Text("Whisper n'est pas pris en charge sur ce téléphone (processeur non 64 bits).", color = MaterialTheme.colorScheme.error)
         }
@@ -618,7 +621,7 @@ private fun EngineCard(s: Settings) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = selected, enabled = downloaded,
-                            onClick = { update { it.copy(whisperModel = m.id, engine = Engine.WHISPER) } })
+                            onClick = { update { it.copy(whisperModel = m.id, engine = if (it.engine == Engine.PC) Engine.PC else Engine.WHISPER) } })
                         Column(Modifier.weight(1f)) {
                             Text(m.name + (if (m.id == ModelCatalog.RECOMMENDED) "  (recommandé)" else ""),
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
@@ -635,7 +638,7 @@ private fun EngineCard(s: Settings) {
                                     val err = ModelManager.download(context, m)
                                     if (err != null) error = err
                                     else if (!ModelManager.isDownloaded(context, ModelCatalog.byId(s.whisperModel) ?: m) || s.engine == Engine.ANDROID) {
-                                        update { it.copy(whisperModel = m.id, engine = Engine.WHISPER) }
+                                        update { it.copy(whisperModel = m.id, engine = if (it.engine == Engine.PC) Engine.PC else Engine.WHISPER) }
                                     }
                                 }
                             }) { Text("Télécharger") }
@@ -660,6 +663,51 @@ private fun EngineCard(s: Settings) {
             confirmButton = { TextButton(onClick = { ModelManager.delete(context, m); confirmDelete = null }) { Text("Supprimer") } },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Annuler") } })
     }
+}
+
+/** Tailscale name of the user's PC (its Whisper server, shared with FLASH LINGO) and a connection test. */
+@Composable
+private fun PcBoostSettings(s: Settings) {
+    val scope = rememberCoroutineScope()
+    var address by remember { mutableStateOf(s.pcAddress) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    HorizontalDivider()
+    Text("Le téléphone envoie l'audio au serveur Whisper de votre PC (le même que FLASH LINGO) par Tailscale : " +
+        "seuls vos appareils y ont accès et la liaison est chiffrée, à la maison comme dehors. Entrez le nom Tailscale " +
+        "du PC (finit par .ts.net, pas l'adresse 100.…). PC éteint ou injoignable : Whisper sur le téléphone " +
+        "prend le relais si un modèle est téléchargé.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    OutlinedTextField(address, {
+        address = it.trim()
+        update { st -> st.copy(pcAddress = address) }
+    }, Modifier.fillMaxWidth(), label = { Text("Nom Tailscale du PC") }, placeholder = { Text("mon-pc.tailXXXX.ts.net") },
+        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+            autoCorrectEnabled = false))
+    when {
+        address.isBlank() -> Text("Entrez le nom du PC : sans lui, la bulle n'utilise pas le PC.",
+            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        PcEngine.baseUrl(address) == null -> Text("Nom invalide (exemple : mon-pc.tail1234.ts.net)",
+            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FilledTonalButton(enabled = !busy && address.isNotBlank(), onClick = {
+            busy = true
+            status = "Connexion…"
+            scope.launch {
+                status = try {
+                    "✓ Connecté : ${PcEngine.ping(address)} sur le PC"
+                } catch (e: Exception) {
+                    "✗ ${e.message}"
+                }
+                busy = false
+            }
+        }) { Text("Tester la connexion") }
+        Spacer(Modifier.width(10.dp))
+        status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+    HorizontalDivider()
+    Text("Modèle de secours sur le téléphone (si le PC est injoignable) :", style = MaterialTheme.typography.labelLarge)
 }
 
 /** Records 5 s and transcribes with the selected model: checks speed and accuracy on this phone. */
