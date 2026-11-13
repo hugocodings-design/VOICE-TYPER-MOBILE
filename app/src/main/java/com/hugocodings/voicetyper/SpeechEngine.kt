@@ -26,6 +26,11 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
         fun onPartial(text: String)
         fun onFinal(text: String)
         fun onError(message: String)
+        /**
+         * The language is not installed for offline recognition. Return true to take over the dictation
+         * (e.g. with Whisper): no error is then reported. The recognizer is already released.
+         */
+        fun onLanguageMissing(langTag: String): Boolean = false
     }
 
     private var recognizer: SpeechRecognizer? = null
@@ -182,9 +187,23 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
                 return
             }
             if (stopRequested && segments.isNotEmpty()) { deliver(); return }
+            if (segments.isEmpty() && isLanguageMissing(error)) {
+                cancel()
+                if (listener.onLanguageMissing(langTag)) {
+                    DiagnosticLog.add("Langue « $langTag » absente hors ligne : dictée reprise par Whisper")
+                    return
+                }
+            }
             fail(describe(error))
         }
     }
+
+    /** Offline language pack missing (on-device recognizers report it as a network error on some phones). */
+    private fun isLanguageMissing(error: Int): Boolean =
+        (Build.VERSION.SDK_INT >= 31 && (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ||
+            error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) ||
+            (offlineOnly && (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
+                error == SpeechRecognizer.ERROR_SERVER))
 
     private fun describe(error: Int): String = when (error) {
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Autorisez le micro dans l'application Voice Typer."
@@ -194,7 +213,7 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
             "Langue hors ligne non installée : téléchargez-la (Voice Typer → Reconnaissance hors ligne)."
         else -> if (Build.VERSION.SDK_INT >= 31 && (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ||
                 error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
-            "Langue « $langTag » non disponible hors ligne : téléchargez-la (Voice Typer → Reconnaissance hors ligne)."
+            "Langue « $langTag » non disponible hors ligne : téléchargez-la (Voice Typer → Reconnaissance hors ligne) ou téléchargez un modèle Whisper."
         } else "Erreur de reconnaissance vocale ($error)."
     }
 

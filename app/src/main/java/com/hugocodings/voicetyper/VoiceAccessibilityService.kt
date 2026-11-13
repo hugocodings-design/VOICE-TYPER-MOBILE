@@ -55,6 +55,10 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     private var capturing = false
     private var transcribing: Job? = null
     private var dictationLang: Lang? = null
+    /** Whisper model of the current dictation (chosen one, or the fallback when the offline language is missing). */
+    private var dictationModel: WhisperModel? = null
+    /** Updates the "Transcription… N s" caption while Whisper works. */
+    private var transcribeTicker: Job? = null
     /** Loudest level of the last dictation (either engine): tells "mic hears nothing" from "nothing recognized". */
     private var lastMaxLevel = -100f
 
@@ -150,6 +154,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             capturing = false
             capture.stop()
             transcribing?.cancel(); WhisperEngine.abort()
+            transcribeTicker?.cancel()
             MicService.stop(this)
             overlay.bubble.state = BubbleView.State.IDLE
             overlay.showCaption("Dictée annulée", 1500)
@@ -223,6 +228,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val lang = preset.language ?: s.language
         dictationLang = lang
         val model = whisperModelIfReady(s)
+        dictationModel = model
         if (s.engine == Engine.WHISPER && model == null) {
             DiagnosticLog.add("Whisper choisi mais modèle ${s.whisperModel} absent : reconnaissance Android")
         }
@@ -240,6 +246,28 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     }
 
     override fun onListening() {}
+
+    /**
+     * Android recognition failed because the language pack is not installed offline: if a Whisper model is
+     * downloaded, record with it instead of failing (the user keeps talking, nothing to set up).
+     */
+    override fun onLanguageMissing(langTag: String): Boolean {
+        val model = downloadedWhisperFallback() ?: return false
+        dictationModel = model
+        capturing = true
+        capture.start(stopOnSilence = !settings.tapToStop)
+        overlay.bubble.state = BubbleView.State.LISTENING
+        overlay.showCaption("« $langTag » non installé hors ligne : Whisper ${model.name} à la place — parlez…")
+        return true
+    }
+
+    /** The chosen Whisper model if downloaded, else the most useful downloaded one (fast before slow). */
+    private fun downloadedWhisperFallback(): WhisperModel? {
+        if (!WhisperNative.available) return null
+        val downloaded = ModelCatalog.MODELS.filter { ModelManager.isDownloaded(this, it) }
+        downloaded.firstOrNull { it.id == settings.whisperModel }?.let { return it }
+        return listOf("small", "base", "tiny", "turbo").firstNotNullOfOrNull { id -> downloaded.firstOrNull { it.id == id } }
+    }
 
     // ---- Whisper path ----
 
@@ -270,13 +298,23 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val pcm = capture.stop()
         lastMaxLevel = capture.maxLevel
         MicService.stop(this)
-        val model = ModelCatalog.byId(settings.whisperModel) ?: return onError("Modèle inconnu")
+        val model = dictationModel ?: ModelCatalog.byId(settings.whisperModel) ?: return onError("Modèle inconnu")
         if (lastMaxLevel < 1f) { // pure silence: Whisper would only invent captions
             DiagnosticLog.add("Capture : silence (niveau max ${"%.1f".format(lastMaxLevel)})")
             return deliverFinal("")
         }
         overlay.bubble.state = BubbleView.State.WORKING
-        overlay.showCaption("Transcription (Whisper ${model.name})…")
+        val audioSecs = pcm.size / AudioCapture.RATE.toFloat()
+        val t0 = System.currentTimeMillis()
+        // a big model can take a minute on a phone: show that it is still working, not stuck
+        transcribeTicker?.cancel()
+        transcribeTicker = scope.launch {
+            while (true) {
+                val secs = (System.currentTimeMillis() - t0) / 1000
+                overlay.showCaption("Transcription (Whisper ${model.name})…" + if (secs >= 2) " $secs s" else "")
+                kotlinx.coroutines.delay(1000)
+            }
+        }
         val lang = dictationLang?.tag ?: "auto"
         val prompt = Dictionary.whisperPrompt(settings.replacements)
         transcribing = scope.launch {
@@ -286,11 +324,18 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
                 throw e
             } catch (e: Exception) {
                 transcribing = null
+                transcribeTicker?.cancel()
                 onError(e.message ?: "La transcription a échoué")
                 return@launch
             }
             transcribing = null
+            transcribeTicker?.cancel()
             deliverFinal(Text.stripWhisperHallucinations(text))
+            val tookSecs = (System.currentTimeMillis() - t0) / 1000f
+            if (text.isNotBlank() && tookSecs > 10f && tookSecs > audioSecs * 3 && model.id != "tiny") {
+                overlay.showCaption("Whisper ${model.name} est lent sur ce téléphone " +
+                    "(${tookSecs.toInt()} s pour ${audioSecs.toInt()} s) : essayez un modèle plus léger dans Voice Typer", 5000)
+            }
         }
     }
 
@@ -374,6 +419,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         if (::speech.isInitialized) speech.cancel()
         if (::capture.isInitialized) { capturing = false; capture.stop() }
         transcribing?.cancel()
+        transcribeTicker?.cancel()
         if (::overlay.isInitialized) overlay.hideBubble()
         MicService.stop(this)
         return super.onUnbind(intent)

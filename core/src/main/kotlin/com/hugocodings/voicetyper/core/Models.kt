@@ -26,7 +26,7 @@ object ModelCatalog {
         WhisperModel("tiny", "Tiny", "ggml-tiny-q5_1.bin", 31, 5, 1, "Instantané, beaucoup d'erreurs en français"),
         WhisperModel("base", "Base", "ggml-base-q5_1.bin", 57, 4, 2, "Rapide, correct pour des messages courts"),
         WhisperModel("small", "Small", "ggml-small-q5_1.bin", 181, 3, 4, "Recommandé : bon français, quelques secondes"),
-        WhisperModel("turbo", "Large v3 Turbo", "ggml-large-v3-turbo-q5_0.bin", 547, 1, 5, "Le plus précis, lent sur téléphone"),
+        WhisperModel("turbo", "Large v3 Turbo", "ggml-large-v3-turbo-q5_0.bin", 547, 1, 5, "Le plus précis, mais très lent sur téléphone (≈ 1 min pour 5 s de parole)"),
     )
     const val RECOMMENDED = "small"
 

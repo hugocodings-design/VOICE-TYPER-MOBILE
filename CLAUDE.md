@@ -22,7 +22,10 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - `OverlayController` / `BubbleView` — TYPE_ACCESSIBILITY_OVERLAY windows, FLAG_NOT_FOCUSABLE (the target
     keeps focus): bubble (drag/tap/long-press), caption (live transcript), preset menu
   - `SpeechEngine` — SpeechRecognizer, on-device when available; tap-to-stop = segmented session (API 33+), else restart after each pause and
-    concatenate segments. Main thread only
+    concatenate segments. Main thread only. Offline language pack missing (error 12/13, or network errors when
+    offline-only) → `onLanguageMissing`: the service continues the same dictation with a downloaded Whisper model
+    (chosen one, else small > base > tiny > turbo); otherwise the error tells the user to download the language
+  - Whisper transcription shows an elapsed-seconds caption; a slow run (> 10 s and > 3× the audio) suggests a lighter model
   - `TextInserter` — ACTION_SET_TEXT + ACTION_SET_SELECTION, fallback clipboard (EXTRA_IS_SENSITIVE) + ACTION_PASTE; undo of the last insert
   - Whisper path (`Settings.engine == WHISPER` + downloaded model, else falls back to Android recognition):
     `app/src/main/cpp` (whisper.cpp v1.9.5 via CMake FetchContent, static, arm64-v8a + armeabi-v7a, `whisper_jni.cpp`),
