@@ -1,10 +1,16 @@
 package com.hugocodings.voicetyper
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
@@ -21,6 +27,16 @@ object PcEngine {
     const val DEFAULT_PORT = 8766
     /** The server refuses more than one minute of audio (16000 × 2 × 60 bytes, WAV header included). */
     const val MAX_SECONDS = 59
+
+    /**
+     * True when a VPN (Tailscale) is connected. Without it the PC's .ts.net name cannot be reached, so the
+     * caller goes straight to Whisper on the phone instead of waiting for a timeout.
+     */
+    fun tailscaleUp(context: Context): Boolean = runCatching {
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return true
+        @Suppress("DEPRECATION")
+        cm.allNetworks.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true }
+    }.getOrDefault(true)
 
     /** "hugo.tailXXXX.ts.net", "host:8766" or "http://…" → base URL. */
     fun baseUrl(address: String): String? {
@@ -40,8 +56,26 @@ object PcEngine {
         }
     }
 
-    /** Returns the text; throws [IOException] with a user-facing message. */
-    suspend fun transcribe(address: String, pcm: FloatArray, lang: String): String = withContext(Dispatchers.IO) {
+    /**
+     * Returns the text; throws [IOException] with a user-facing message. A connection that fails right away
+     * (network switching from Wi-Fi to mobile data, Tailscale reconnecting) is retried once.
+     */
+    suspend fun transcribe(address: String, pcm: FloatArray, lang: String): String = try {
+        transcribeOnce(address, pcm, lang)
+    } catch (e: ConnectFailed) {
+        DiagnosticLog.add("PC : connexion ratée (${e.message}), nouvel essai")
+        delay(700)
+        try {
+            transcribeOnce(address, pcm, lang)
+        } catch (e2: ConnectFailed) {
+            throw IOException(e2.message)
+        }
+    }
+
+    /** The connection itself failed (nothing was sent): safe to retry. */
+    private class ConnectFailed(message: String) : IOException(message)
+
+    private suspend fun transcribeOnce(address: String, pcm: FloatArray, lang: String): String = withContext(Dispatchers.IO) {
         val secs = pcm.size / AudioCapture.RATE
         if (secs > MAX_SECONDS) throw IOException("dictée de plus d'une minute : trop longue pour le PC")
         val path = "/transcribe" + if (lang == "fr" || lang == "en") "?lang=$lang" else ""
@@ -53,6 +87,13 @@ object PcEngine {
             conn.setRequestProperty("Content-Type", "audio/wav")
             conn.setFixedLengthStreamingMode(wav.size)
             val t0 = System.currentTimeMillis()
+            try {
+                conn.connect()
+            } catch (e: SocketTimeoutException) {
+                throw IOException(describeConnect(e)) // PC off/asleep: no retry, the phone takes over sooner
+            } catch (e: IOException) {
+                throw ConnectFailed(describeConnect(e))
+            }
             conn.outputStream.use { it.write(wav) }
             val text = JSONObject(read(conn)).optString("text").trim()
             DiagnosticLog.add("PC : $secs s d'audio transcrit en ${System.currentTimeMillis() - t0} ms (envoi compris)")
@@ -83,15 +124,20 @@ object PcEngine {
         return conn
     }
 
+    private fun describeConnect(e: IOException): String = when (e) {
+        is UnknownHostException -> "nom du PC inconnu (Tailscale activé sur le téléphone ?)"
+        is SocketTimeoutException -> "le PC ne répond pas (allumé ? Tailscale actif ?)"
+        is ConnectException, is NoRouteToHostException -> "PC injoignable (allumé ? serveur Whisper lancé ? Tailscale actif ?)"
+        else -> "PC injoignable (${e.javaClass.simpleName})"
+    }
+
     private fun read(conn: HttpURLConnection): String {
         val status = try {
             conn.responseCode
-        } catch (e: UnknownHostException) {
-            throw IOException("nom du PC inconnu (Tailscale activé sur le téléphone ?)")
         } catch (e: SocketTimeoutException) {
-            throw IOException("le PC ne répond pas (allumé ? Tailscale actif ?)")
+            throw IOException("le PC met trop de temps à répondre")
         } catch (e: IOException) {
-            throw IOException("PC injoignable (allumé ? serveur Whisper lancé ? Tailscale actif ?)")
+            throw IOException(describeConnect(e))
         }
         val text = (if (status in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (status in 200..299) return text

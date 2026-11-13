@@ -10,6 +10,8 @@
          when the user picks « PC (boosté) », to reach the Whisper server on their own PC through Tailscale
          (plain HTTP inside the encrypted tailnet: see network_security_config). Otherwise audio and text never leave the phone. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- « PC (boosté) »: tells whether Tailscale (a VPN) is connected, to skip the PC at once when it is not -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <queries>
         <!-- Android 11+: required to see the phone's speech recognition service -->

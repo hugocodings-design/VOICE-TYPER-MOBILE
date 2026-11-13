@@ -254,6 +254,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         if (pcMissing) DiagnosticLog.add("PC choisi mais nom du PC manquant : " +
             (model?.let { "Whisper ${it.id} sur le téléphone" } ?: "reconnaissance Android"))
         val engineName = when {
+            usePc && !PcEngine.tailscaleUp(this) -> "Tailscale désactivé : téléphone"
             usePc -> "PC (boosté)"
             model != null -> "Whisper ${model.name}"
             else -> SpeechEngine.languageTag(lang)
@@ -342,6 +343,9 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             val text = try {
                 if (pc) {
                     try {
+                        if (!PcEngine.tailscaleUp(this@VoiceAccessibilityService)) {
+                            throw java.io.IOException("Tailscale désactivé sur le téléphone")
+                        }
                         timed("PC") { PcEngine.transcribe(s.pcAddress, pcm, lang) }
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e

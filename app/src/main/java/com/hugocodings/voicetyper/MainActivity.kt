@@ -669,6 +669,7 @@ private fun EngineCard(s: Settings) {
 @Composable
 private fun PcBoostSettings(s: Settings) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var address by remember { mutableStateOf(s.pcAddress) }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -696,6 +697,7 @@ private fun PcBoostSettings(s: Settings) {
             status = "Connexion…"
             scope.launch {
                 status = try {
+                    if (!PcEngine.tailscaleUp(context)) throw java.io.IOException("Tailscale n'est pas connecté sur ce téléphone : ouvrez l'app Tailscale")
                     "✓ Connecté : ${PcEngine.ping(address)} sur le PC"
                 } catch (e: Exception) {
                     "✗ ${e.message}"

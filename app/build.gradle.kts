@@ -12,8 +12,8 @@ android {
         applicationId = "com.hugocodings.voicetyper.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.5.1"
+        versionCode = 13
+        versionName = "0.5.2"
         // Whisper (whisper.cpp) for ARM phones, 64-bit and 32-bit (some phones run 32-bit Android):
         // an APK whose native code matches no ABI of the phone cannot be installed at all.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
