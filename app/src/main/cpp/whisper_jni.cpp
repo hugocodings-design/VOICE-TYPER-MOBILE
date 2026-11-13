@@ -6,6 +6,7 @@
 #include <thread>
 #include <android/log.h>
 #include "whisper.h"
+#include "ggml-backend.h"
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "VoiceTyperWhisper", __VA_ARGS__)
 
@@ -21,9 +22,48 @@ std::string jstr(JNIEnv *env, jstring s) {
 std::atomic<bool> g_abort{false};
 
 bool abort_cb(void * /*user_data*/) { return g_abort.load(); }
+
+#ifdef VT_BACKEND_DL
+std::string g_backend_file;  // e.g. libggml-cpu-android_armv8.6_1.so
+
+// ggml logs to stderr by default (lost on Android): send it to logcat and remember which backend was loaded
+void ggml_to_logcat(enum ggml_log_level level, const char *text, void *) {
+    if (level >= GGML_LOG_LEVEL_INFO) __android_log_print(ANDROID_LOG_INFO, "VoiceTyperGgml", "%s", text);
+    std::string t(text ? text : "");
+    auto pos = t.find("libggml-cpu-");
+    if (t.find("loaded") != std::string::npos && pos != std::string::npos) {
+        auto end = t.find(".so", pos);
+        g_backend_file = t.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+    }
+}
+#endif
 }  // namespace
 
 extern "C" {
+
+/**
+ * arm64: loads the best ggml CPU backend for this processor (libggml-cpu-android_armv*.so in the app's native
+ * library folder). Must run once before the first model. Returns the loaded backend's name ("" on 32-bit builds).
+ */
+JNIEXPORT jstring JNICALL
+Java_com_hugocodings_voicetyper_WhisperNative_loadBackends(JNIEnv *env, jclass, jstring dir) {
+#ifdef VT_BACKEND_DL
+    static bool loaded = false;
+    if (!loaded) {
+        std::string d = jstr(env, dir);
+        ggml_log_set(ggml_to_logcat, nullptr);
+        ggml_backend_load_all_from_path(d.c_str());
+        loaded = true;
+    }
+    std::string out = g_backend_file.empty() ? std::string("aucun backend CPU chargé") : g_backend_file;
+    if (ggml_backend_reg_count() == 0) out = "aucun backend";
+    LOGI("backend: %s", out.c_str());
+    return env->NewStringUTF(out.c_str());
+#else
+    (void) dir;
+    return env->NewStringUTF("");
+#endif
+}
 
 JNIEXPORT jlong JNICALL
 Java_com_hugocodings_voicetyper_WhisperNative_init(JNIEnv *env, jclass, jstring path) {

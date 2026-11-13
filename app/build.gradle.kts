@@ -12,12 +12,13 @@ android {
         applicationId = "com.hugocodings.voicetyper.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.5.0"
+        versionCode = 12
+        versionName = "0.5.1"
         // Whisper (whisper.cpp) for ARM phones, 64-bit and 32-bit (some phones run 32-bit Android):
         // an APK whose native code matches no ABI of the phone cannot be installed at all.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
-        externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
+        // c++_shared: whisper, ggml and its per-processor backends are separate .so files sharing one C++ runtime
+        externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_shared") } }
     }
     externalNativeBuild {
         cmake {
@@ -56,6 +57,9 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+    // ggml scans the native library folder for its per-processor backends (libggml-cpu-*.so): they must be
+    // real files there, so native libraries are extracted at install instead of being read from the APK
+    packaging { jniLibs { useLegacyPackaging = true } }
 }
 
 dependencies {

@@ -89,6 +89,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         capture = AudioCapture(this)
         inserter = TextInserter(this)
         running = true
+        // pick the fastest Whisper build for this processor now (cheap), so the first dictation does not wait
+        scope.launch(kotlinx.coroutines.Dispatchers.Default) { WhisperNative.ensureBackends(this@VoiceAccessibilityService) }
         scope.launch {
             SettingsRepository.state.collect {
                 if (::overlay.isInitialized) {

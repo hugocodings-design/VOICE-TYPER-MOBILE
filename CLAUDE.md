@@ -29,7 +29,13 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - Whisper transcription shows an elapsed-seconds caption; a slow run (> 10 s and > 3× the audio) suggests a lighter model
   - `TextInserter` — ACTION_SET_TEXT + ACTION_SET_SELECTION, fallback clipboard (EXTRA_IS_SENSITIVE) + ACTION_PASTE; undo of the last insert
   - Whisper path (`Settings.engine == WHISPER` + downloaded model, else falls back to Android recognition):
-    `app/src/main/cpp` (whisper.cpp v1.9.5 via CMake FetchContent, static, arm64-v8a + armeabi-v7a, `whisper_jni.cpp`),
+    `app/src/main/cpp` (whisper.cpp v1.9.5 via CMake FetchContent, `whisper_jni.cpp`). arm64-v8a: shared libs with
+    `GGML_BACKEND_DL` + `GGML_CPU_ALL_VARIANTS` → one `libggml-cpu-android_armv*.so` per ARM generation; `WhisperNative.
+    ensureBackends` (called at service start and before the first model) runs `ggml_backend_load_all_from_path
+    (nativeLibraryDir)`, which picks the best one (S24 Ultra: armv8.6_1 = dotprod+fp16+i8mm, measured ~2x faster than
+    armv8.0: Small 14.6 s → 7.5 s for 4.7 s of audio). Needs `useLegacyPackaging = true` (libs extracted to disk) and
+    `c++_shared`. ggml's log goes to logcat tag `VoiceTyperGgml`. armeabi-v7a: single static build. 4 threads (8 is slower:
+    little cores),
     `WhisperNative` (JNI), `WhisperEngine` (one model kept loaded, preloaded by the service), `AudioCapture`
     (16 kHz AudioRecord, levels, silence auto-stop), `ModelManager` (download to filesDir/models, `.part` then rename).
     Silence (max level < 1) is never sent to Whisper; `Text.stripWhisperHallucinations` cleans the output;

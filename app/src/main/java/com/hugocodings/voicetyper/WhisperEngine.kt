@@ -16,6 +16,7 @@ object WhisperEngine {
     /** Loads [model] if needed; returns an error message or null. */
     suspend fun ensureLoaded(context: Context, model: WhisperModel): String? = withContext(Dispatchers.Default) {
         if (!WhisperNative.available) return@withContext "Whisper n'est pas pris en charge sur ce téléphone"
+        WhisperNative.ensureBackends(context)
         val f = ModelManager.file(context, model)
         if (!ModelManager.isDownloaded(context, model)) return@withContext "Modèle ${model.name} non téléchargé"
         lock.withLock {
