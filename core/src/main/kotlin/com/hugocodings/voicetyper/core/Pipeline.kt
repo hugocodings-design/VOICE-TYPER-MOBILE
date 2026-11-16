@@ -29,6 +29,7 @@ object Pipeline {
         var t = text
         if (preset.voiceCommands) t = VoiceCommands.apply(t, lang)
         t = Dictionary.apply(t, Dictionary.forApp(settings.replacements, settings.appDictionaries, app))
+        t = Dictionary.applyVocabulary(t, settings.vocabulary)
         if (preset.removeFillers) t = Text.removeFillers(t, lang)
         if (t.isBlank()) return Result("")
         t = Styles.apply(preset.style, t, lang, settings.signature)

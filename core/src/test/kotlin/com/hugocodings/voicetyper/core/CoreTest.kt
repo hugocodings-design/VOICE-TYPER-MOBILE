@@ -81,6 +81,22 @@ class DictionaryTest {
         assertEquals(null, Dictionary.whisperPrompt(emptyList()))
     }
 
+    @Test fun vocabularyFixesCloseSpellings() {
+        val v = listOf("Tailscale", "ChatGPT", "Éric", "FLASH LINGO")
+        assertEquals("J'ouvre Tailscale et ChatGPT", Dictionary.applyVocabulary("J'ouvre tail scale et chat-gpt", v))
+        assertEquals("Merci Éric, FLASH LINGO marche", Dictionary.applyVocabulary("Merci eric, flash lingo marche", v))
+        assertEquals("ChatGPT", Dictionary.applyVocabulary("chatgpt", v))
+        assertEquals("tailscales ericsson", Dictionary.applyVocabulary("tailscales ericsson", v))
+        assertEquals("a b", Dictionary.applyVocabulary("a b", listOf("A", "$1")))
+    }
+
+    @Test fun vocabularyInWhisperPromptAndPipeline() {
+        assertEquals("Tailscale, ChatGPT", Dictionary.whisperPrompt(listOf(Replacement("chat GPT", "ChatGPT")), listOf("Tailscale", "ChatGPT")))
+        val s = Settings(vocabulary = listOf("Tailscale"))
+        val raw = Pipeline.process("j'ai activé tail scale", s.preset("normal")!!, s).text
+        assertTrue(raw.contains("Tailscale"), raw)
+    }
+
     @Test fun catalogHasRecommendedModel() {
         assertTrue(ModelCatalog.byId(ModelCatalog.RECOMMENDED) != null)
         assertTrue(ModelCatalog.MODELS.all { it.url.startsWith("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-") })

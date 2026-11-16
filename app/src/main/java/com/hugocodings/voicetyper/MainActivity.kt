@@ -94,6 +94,7 @@ private fun Screen() {
             item { LanguageCard(s) }
             item { PresetsCard(s, onEdit = { editing = it }) }
             item { AppRulesCard(s, onAdd = { pickingApp = true }) }
+            item { VocabularyCard(s) }
             item { DictionaryCard(s) }
             item { SignatureCard(s) }
             item { BubbleCard(s) }
@@ -426,6 +427,30 @@ private fun DictionaryCard(s: Settings) {
                 update { it.copy(replacements = it.replacements + Replacement(from.trim(), to)) }
                 from = ""; to = ""
             }) { Icon(Icons.Filled.Add, "Ajouter") }
+        }
+    }
+}
+
+@Composable
+private fun VocabularyCard(s: Settings) {
+    var word by remember { mutableStateOf("") }
+    fun add() {
+        val w = word.trim()
+        if (w.isNotEmpty()) update { st -> st.copy(vocabulary = (st.vocabulary.filterNot { it.equals(w, ignoreCase = true) } + w)) }
+        word = ""
+    }
+    Section("Mots à reconnaître", "Écrivez juste le mot comme il doit apparaître (Tailscale, Éric, FLASH LINGO). " +
+        "Quand la dictée donne quelque chose de proche (majuscules, accents, espaces : « tail scale »), il est écrit ainsi. " +
+        "Fonctionne avec tous les moteurs ; Whisper sur le téléphone s'attend en plus à ces mots.") {
+        s.vocabulary.forEach { w ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(w, Modifier.weight(1f))
+                IconButton(onClick = { update { it.copy(vocabulary = it.vocabulary - w) } }) { Icon(Icons.Filled.Close, "Retirer") }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(word, { word = it }, Modifier.weight(1f), label = { Text("Mot ou nom") }, singleLine = true)
+            IconButton(enabled = word.isNotBlank(), onClick = { add() }) { Icon(Icons.Filled.Add, "Ajouter") }
         }
     }
 }

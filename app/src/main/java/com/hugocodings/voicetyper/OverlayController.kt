@@ -138,21 +138,22 @@ class OverlayController(private val context: Context, private val callbacks: Cal
             setOnClickListener { onClick() }
         }
         list.addView(TextView(context).apply {
-            text = "Dicter avec…"
+            text = "Style pour $appLabel (mémorisé)"
             setTextColor(Color.LTGRAY); textSize = 13f
             setPadding(dp(14), dp(4), dp(14), dp(4))
         })
-        val remember = CheckBox(context).apply {
-            text = "Toujours dans $appLabel"
+        // The chosen style is remembered for this app (next plain tap uses it), unless « juste cette fois ».
+        val onceOnly = CheckBox(context).apply {
+            text = "Juste cette fois (ne pas mémoriser pour $appLabel)"
             setTextColor(Color.LTGRAY)
             buttonTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#22C55E"))
         }
+        list.addView(onceOnly)
         for (p in presets) {
             list.addView(item(p.name, p.color.toInt(), bold = p.id == currentId) {
-                hideMenu(); callbacks.onMenuPreset(p, remember.isChecked)
+                hideMenu(); callbacks.onMenuPreset(p, !onceOnly.isChecked)
             })
         }
-        list.addView(remember)
         list.addView(item("🌐  Langue : $language (toucher pour changer)", null) { hideMenu(); callbacks.onMenuToggleLanguage() })
         if (hasLast) list.addView(item("↺  Recoller la dernière dictée", null) { hideMenu(); callbacks.onMenuRepaste() })
         list.addView(item("✕  Masquer la bulle ici", null) { hideMenu(); callbacks.onMenuHideHere() })

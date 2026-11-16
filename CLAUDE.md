@@ -11,7 +11,9 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
 ## Layout
 - `core/` — pure Kotlin/JVM, unit-tested (`./gradlew -PcoreOnly :core:test`, works without Android SDK)
   - `VoiceCommands.kt` — port of desktop `commands.py` (FR/EN commands, `isUndo` « efface ça » said alone)
-  - `Dictionary.kt` — replacements (+ per-app), `Text.kt` — capitalisation, fillers, sentences
+  - `Dictionary.kt` — replacements (+ per-app); `Settings.vocabulary` = words without « entendu »: `applyVocabulary`
+    rewrites close spellings (case/accents/spaces/hyphens ignored; parts ≥ 5 letters may be split anywhere) as typed,
+    and they lead the Whisper prompt. `Text.kt` — capitalisation, fillers, sentences
   - `Preset.kt` (`Style`, `Preset`, `AppRule`, `Defaults`), `Styles.kt` — rule-based styles (EMAIL greeting/
     closing/signature, MESSAGE, NOTES, CLEAN, RAW). No LLM yet (roadmap: on-device LLM like desktop Qwen)
   - `Pipeline.kt` — raw → commands → dictionary → fillers → style → prefix/suffix (+ trailing space)
@@ -19,7 +21,8 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - `Settings.kt` — kotlinx.serialization JSON, `sanitized()` keeps presets/default/app rules consistent
 - `app/` — Android (minSdk 26, target 35, Compose)
   - `VoiceAccessibilityService` — tracks the focused editable node (`findFocus(FOCUS_INPUT)`, IME window),
-    shows/hides the bubble (700 ms debounce), FR/EN badge, menu language switch, runs dictation, inserts. Long press: menu; during dictation: cancel
+    shows/hides the bubble (700 ms debounce), FR/EN badge, menu language switch, runs dictation, inserts. Long press: menu; during dictation: cancel.
+    A style picked in the menu is remembered for that app (app rule) unless « Juste cette fois » is checked; a plain tap uses it
   - `OverlayController` / `BubbleView` — TYPE_ACCESSIBILITY_OVERLAY windows, FLAG_NOT_FOCUSABLE (the target
     keeps focus): bubble (drag/tap/long-press), caption (live transcript), preset menu
   - `SpeechEngine` — SpeechRecognizer, on-device when available; tap-to-stop = segmented session (API 33+), else restart after each pause and

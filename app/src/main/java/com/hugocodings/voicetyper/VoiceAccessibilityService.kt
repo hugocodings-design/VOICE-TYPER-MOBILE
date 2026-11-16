@@ -182,14 +182,20 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             return
         }
         val pkg = targetPkg
-        overlay.showMenu(settings.presets, settings.presetFor(pkg).id, appLabel(pkg), lastDictation.isNotEmpty(), languageName())
+        val menuPkg = pkg ?: rootInActiveWindow?.packageName?.toString()
+        overlay.showMenu(settings.presets, settings.presetFor(menuPkg).id, appLabel(menuPkg), lastDictation.isNotEmpty(), languageName())
     }
 
     override fun onBubbleMoved(x: Int, y: Int) = SettingsRepository.update { it.copy(bubbleX = x, bubbleY = y) }
 
     override fun onMenuPreset(preset: Preset, remember: Boolean) {
-        val pkg = targetPkg
-        if (remember && pkg != null) SettingsRepository.update { it.withAppPreset(pkg, preset.id, appLabel(pkg)) }
+        val pkg = targetPkg ?: rootInActiveWindow?.packageName?.toString()
+        if (remember && pkg != null && settings.presetFor(pkg).id != preset.id) {
+            SettingsRepository.update { it.withAppPreset(pkg, preset.id, appLabel(pkg)) }
+            DiagnosticLog.add("Style « ${preset.name} » mémorisé pour ${appLabel(pkg)}")
+            startDictation(preset, note = "mémorisé pour ${appLabel(pkg)} · ")
+            return
+        }
         startDictation(preset)
     }
 
@@ -220,7 +226,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
     // ---- dictation ----
 
-    private fun startDictation(preset: Preset) {
+    private fun startDictation(preset: Preset, note: String = "") {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             overlay.showCaption("Autorisez le micro dans Voice Typer", 3000)
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -260,7 +266,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             else -> SpeechEngine.languageTag(lang)
         }
         overlay.showCaption((if (pcMissing) "PC non configuré (nom du PC dans Voice Typer) · " else "") +
-            "${preset.name} · $engineName · ${lang?.tag ?: "auto"} — parlez…")
+            "${preset.name} · $note$engineName · ${lang?.tag ?: "auto"} — parlez…")
         // give the microphone foreground service time to be up before the mic is opened:
         // Android hands silence to a background app that opens it too early
         val start = Runnable {
@@ -335,7 +341,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         overlay.bubble.state = BubbleView.State.WORKING
         val audioSecs = pcm.size / AudioCapture.RATE.toFloat()
         val lang = dictationLang?.tag ?: "auto"
-        val prompt = Dictionary.whisperPrompt(settings.replacements)
+        val prompt = Dictionary.whisperPrompt(settings.replacements, settings.vocabulary)
         val s = settings
         transcribing = scope.launch {
             val t0 = System.currentTimeMillis()

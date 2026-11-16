@@ -17,6 +17,8 @@ data class Settings(
     val appRules: List<AppRule> = Defaults.appRules(),
     val replacements: List<Replacement> = listOf(Replacement("chat GPT", "ChatGPT")),
     val appDictionaries: List<AppDictionary> = emptyList(),
+    /** Words written as typed whenever something close is heard (no « entendu »), also hinted to Whisper. */
+    val vocabulary: List<String> = emptyList(),
     val signature: String = "",
     val bubbleMode: BubbleMode = BubbleMode.WHEN_TYPING,
     /** Apps where the bubble never shows (long press → « Masquer la bulle ici »). */
