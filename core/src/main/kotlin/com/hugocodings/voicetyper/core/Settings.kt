@@ -24,6 +24,8 @@ data class Settings(
     val clientContext: String = "",
     /** Terms of the client email the user removed (wrongly detected). */
     val clientIgnoredTerms: List<String> = emptyList(),
+    /** Preset selected in the client-reply card (null = first Courriel preset). */
+    val replyPresetId: String? = null,
     val bubbleMode: BubbleMode = BubbleMode.WHEN_TYPING,
     /** Apps where the bubble never shows (long press → « Masquer la bulle ici »). */
     val hiddenApps: List<String> = emptyList(),
@@ -49,8 +51,12 @@ data class Settings(
         if (clientContext.isBlank()) null else ClientContexts.extract(clientContext, lang, clientIgnoredTerms)
 
     /** Words to respect for [preset]: the user's vocabulary, plus the client's terms for Courriel presets. */
-    fun vocabularyFor(preset: Preset?): List<String> =
-        if (preset?.style == Style.EMAIL) vocabulary + (client()?.terms ?: emptyList()) else vocabulary
+    fun vocabularyFor(preset: Preset?, useClient: Boolean = preset?.style == Style.EMAIL): List<String> =
+        if (useClient) vocabulary + (client()?.terms ?: emptyList()) else vocabulary
+
+    /** The preset chosen in the client-reply card: the saved one, else the first Courriel preset. */
+    fun replyPreset(): Preset =
+        preset(replyPresetId) ?: presets.firstOrNull { it.style == Style.EMAIL } ?: presetFor(null)
 
     /** The preset for [packageName]: its app rule, else the default preset. */
     fun presetFor(packageName: String?): Preset {

@@ -24,7 +24,9 @@ object Pipeline {
         }
     }
 
-    fun process(raw: String, preset: Preset, settings: Settings, app: String? = null): Result {
+    /** [useClient]: apply the pasted client context (default: Courriel presets; any preset in the reply card). */
+    fun process(raw: String, preset: Preset, settings: Settings, app: String? = null,
+                useClient: Boolean = preset.style == Style.EMAIL): Result {
         val text = raw.trim()
         if (text.isEmpty()) return Result("")
         val declared = preset.language ?: settings.language
@@ -33,7 +35,7 @@ object Pipeline {
         var t = text
         if (preset.voiceCommands) t = VoiceCommands.apply(t, lang)
         t = Dictionary.apply(t, Dictionary.forApp(settings.replacements, settings.appDictionaries, app))
-        val client = if (preset.style == Style.EMAIL) settings.client(lang) else null
+        val client = if (useClient) settings.client(lang) else null
         t = Dictionary.applyVocabulary(t, settings.vocabulary + (client?.terms ?: emptyList()))
         if (preset.removeFillers) t = Text.removeFillers(t, lang)
         if (t.isBlank()) return Result("")

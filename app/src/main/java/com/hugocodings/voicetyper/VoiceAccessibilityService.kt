@@ -47,6 +47,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     private var target: AccessibilityNodeInfo? = null
     private var targetPkg: String? = null
     private var dictationPreset: Preset? = null
+    /** Started from the client-reply card: the client context applies whatever the preset. */
+    private var dictationFromApp = false
     private var dictationPkg: String? = null
     /** The field the dictation started in: the result goes there, never into a field focused later. */
     private var dictationTarget: AccessibilityNodeInfo? = null
@@ -231,7 +233,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
     // ---- dictation ----
 
-    private fun startDictation(preset: Preset, note: String = "") {
+    private fun startDictation(preset: Preset, note: String = "", fromApp: Boolean = false) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             overlay.showCaption("Autorisez le micro dans Voice Typer", 3000)
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -242,6 +244,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             return
         }
         dictationPreset = preset
+        dictationFromApp = fromApp
         dictationPkg = targetPkg
         dictationTarget = target
         lastMaxLevel = -100f
@@ -346,7 +349,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         overlay.bubble.state = BubbleView.State.WORKING
         val audioSecs = pcm.size / AudioCapture.RATE.toFloat()
         val lang = dictationLang?.tag ?: "auto"
-        val prompt = Dictionary.whisperPrompt(settings.replacements, settings.vocabularyFor(dictationPreset))
+        val prompt = Dictionary.whisperPrompt(settings.replacements, settings.vocabularyFor(dictationPreset, dictationFromApp || dictationPreset?.style == Style.EMAIL))
         val s = settings
         transcribing = scope.launch {
             val t0 = System.currentTimeMillis()
@@ -426,7 +429,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         MicService.stop(this)
         overlay.bubble.state = BubbleView.State.IDLE
         val preset = dictationPreset ?: settings.presetFor(targetPkg)
-        val result = Pipeline.process(text, preset, settings, dictationPkg)
+        val result = Pipeline.process(text, preset, settings, dictationPkg,
+            useClient = dictationFromApp || preset.style == Style.EMAIL)
         DiagnosticLog.add("Résultat : ${result.text.length} caractères" + if (result.undo) " (efface ça)" else "")
         when {
             result.undo -> {
@@ -585,14 +589,13 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
     /**
      * « Dicter la réponse » button of Voice Typer's client-reply card: same as a bubble tap on the focused reply
-     * field, with the first Courriel preset. A second press stops (like the bubble). False if no field is focused.
+     * field, with the preset chosen in the card. A second press stops (like the bubble). False if no field is focused.
      */
-    fun dictateFromApp(): Boolean {
+    fun dictateFromApp(preset: Preset): Boolean {
         if (isDictating) { onBubbleTap(); return true }
         refreshBubble()
         if (currentTarget() == null) return false
-        val preset = settings.presets.firstOrNull { it.style == Style.EMAIL } ?: settings.presetFor(targetPkg)
-        startDictation(preset)
+        startDictation(preset, fromApp = true)
         return true
     }
 

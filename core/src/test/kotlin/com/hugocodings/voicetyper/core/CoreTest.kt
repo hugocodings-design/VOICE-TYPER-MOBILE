@@ -177,6 +177,18 @@ class ClientContextTest {
         assertTrue("Groupe Alpha" in c.terms, c.terms.toString())
     }
 
+    @Test fun replyCardAppliesClientToAnyPreset() {
+        val s = Settings(clientContext = mail)
+        assertEquals("email", s.replyPreset().id)
+        assertEquals("notes", s.copy(replyPresetId = "notes").replyPreset().id)
+        assertEquals("email", s.copy(replyPresetId = "deleted").replyPreset().id)
+        val r = Pipeline.process("on a parlé à la schl", s.preset("message")!!, s, useClient = true)
+        assertEquals("On a parlé à la SCHL ", r.text)
+        assertEquals(null, r.subject)
+        assertTrue("SCHL" in s.vocabularyFor(s.preset("notes"), useClient = true))
+        assertTrue("SCHL" !in s.vocabularyFor(s.preset("notes")))
+    }
+
     @Test fun ignoredTermsAreDropped() {
         assertTrue(ClientContexts.extract(mail, ignored = listOf("SCHL")).terms.none { it == "SCHL" })
     }

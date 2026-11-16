@@ -91,7 +91,6 @@ private fun Screen() {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item { StatusCard() }
-            item { TryCard() }
             item { ClientReplyCard(s) }
             item { DiagnosticCard(s) }
             item { EngineCard(s) }
@@ -220,14 +219,6 @@ private fun StepRow(label: String, done: Boolean, action: String, onClick: () ->
     }
 }
 
-@Composable
-private fun TryCard() {
-    var text by remember { mutableStateOf("") }
-    Section("Essayer", "Touchez le champ : la bulle apparaît. Touchez-la, parlez, touchez-la encore. Appui long = autre préréglage.") {
-        OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 110.dp), placeholder = { Text("Dictez ici…") })
-    }
-}
-
 // ---------------- client reply ----------------
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -242,7 +233,9 @@ private fun ClientReplyCard(s: Settings) {
     val focus = remember { FocusRequester() }
     val client = remember(s.clientContext, s.clientIgnoredTerms, s.language) { s.client() }
     val lang = s.language ?: Lang.FR
-    val subject = client?.replySubject ?: reply.takeIf { it.isNotBlank() }?.let { EmailSubject.generate(it, lang) }
+    val replyPreset = s.replyPreset()
+    val isEmail = replyPreset.style == Style.EMAIL
+    val subject = if (!isEmail) null else client?.replySubject ?: reply.takeIf { it.isNotBlank() }?.let { EmailSubject.generate(it, lang) }
 
     LaunchedEffect(dictating) {
         while (dictating) {
@@ -257,8 +250,8 @@ private fun ClientReplyCard(s: Settings) {
     }
 
     Section("Réponse à un client", "Collez le courriel reçu : le nom du client, l'objet et ses termes (personnes, entreprises, " +
-        "sigles) sont respectés dans vos dictées Courriel, ici comme dans Gmail ou Outlook, tant que ce champ est rempli. " +
-        "Tout reste sur le téléphone.") {
+        "sigles) sont respectés dans la réponse dictée ici (tout préréglage) et dans vos dictées Courriel dans Gmail ou Outlook, " +
+        "tant que ce champ est rempli. Tout reste sur le téléphone.") {
         OutlinedTextField(pasted, { setContext(it) }, Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 220.dp),
             label = { Text("Courriel du client") }, placeholder = { Text("Collez le courriel reçu ici…") })
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -284,6 +277,14 @@ private fun ClientReplyCard(s: Settings) {
                 Text("Remettre les ${s.clientIgnoredTerms.size} terme(s) retiré(s)")
             }
         }
+        Text("Préréglage de la réponse", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            s.presets.forEach { p ->
+                FilterChip(selected = p.id == replyPreset.id, onClick = { update { it.copy(replyPresetId = p.id) } },
+                    label = { Text(p.name) }, leadingIcon = { ColorDot(p.color, 10) })
+            }
+        }
+        Text(replyPreset.style.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (subject != null) Text("Objet : $subject", fontWeight = FontWeight.SemiBold)
         OutlinedTextField(reply, { reply = it }, Modifier.fillMaxWidth().heightIn(min = 140.dp).focusRequester(focus),
             label = { Text("Réponse") }, placeholder = { Text("Touchez « Dicter la réponse » et parlez…") })
@@ -291,12 +292,12 @@ private fun ClientReplyCard(s: Settings) {
             Button(onClick = {
                 val svc = VoiceAccessibilityService.instance
                 if (svc == null) { hint = "Activez d'abord Voice Typer dans Accessibilité (étape 1 en haut)."; return@Button }
-                if (dictating) { svc.dictateFromApp(); return@Button }
+                if (dictating) { svc.dictateFromApp(replyPreset); return@Button }
                 hint = null
                 focus.requestFocus()
                 scope.launch {
                     kotlinx.coroutines.delay(350) // let the service see the focused field
-                    dictating = svc.dictateFromApp()
+                    dictating = svc.dictateFromApp(replyPreset)
                     if (!dictating) hint = "Touchez le champ Réponse, puis réessayez."
                 }
             }) {
@@ -349,6 +350,20 @@ private fun ColorDot(color: Long, size: Int = 14) {
 
 @Composable
 private fun PresetsCard(s: Settings, onEdit: (Preset) -> Unit) {
+    var deleting by remember { mutableStateOf<Preset?>(null) }
+    deleting?.let { p ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Supprimer « ${p.name} » ?") },
+            text = { Text("Les applications qui l'utilisaient reprendront le préréglage par défaut.") },
+            confirmButton = {
+                TextButton(onClick = { update { st -> st.copy(presets = st.presets.filterNot { it.id == p.id }) }; deleting = null }) {
+                    Text("Supprimer", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Annuler") } },
+        )
+    }
     Section("Préréglages", "La façon d'écrire. Le préréglage par défaut sert partout où aucune règle d'application ne s'applique.") {
         s.presets.forEach { p ->
             Row(Modifier.fillMaxWidth().clickable { onEdit(p) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -360,6 +375,7 @@ private fun PresetsCard(s: Settings, onEdit: (Preset) -> Unit) {
                 }
                 if (p.id == s.defaultPresetId) AssistChip(onClick = {}, label = { Text("Par défaut") })
                 else TextButton(onClick = { update { it.copy(defaultPresetId = p.id) } }) { Text("Défaut") }
+                if (s.presets.size > 1) IconButton(onClick = { deleting = p }) { Icon(Icons.Filled.Delete, "Supprimer ${p.name}") }
             }
         }
         OutlinedButton(onClick = {
@@ -419,7 +435,7 @@ private fun PresetDialog(initial: Preset, isNew: Boolean, onDismiss: () -> Unit)
         },
         dismissButton = {
             Row {
-                if (!isNew) TextButton(onClick = {
+                if (!isNew && SettingsRepository.state.value.presets.size > 1) TextButton(onClick = {
                     update { st -> st.copy(presets = st.presets.filterNot { it.id == p.id }) }
                     onDismiss()
                 }) { Text("Supprimer", color = MaterialTheme.colorScheme.error) }
