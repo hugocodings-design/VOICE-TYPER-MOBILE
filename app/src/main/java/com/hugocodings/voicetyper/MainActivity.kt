@@ -293,6 +293,11 @@ private fun PresetDialog(initial: Preset, isNew: Boolean, onDismiss: () -> Unit)
                 }
                 SwitchRow("Commandes vocales (« à la ligne », « virgule »…)", p.voiceCommands) { p = p.copy(voiceCommands = it) }
                 SwitchRow("Retirer les hésitations (euh, hum…)", p.removeFillers) { p = p.copy(removeFillers = it) }
+                if (p.style == Style.EMAIL) {
+                    SwitchRow("Objet automatique (rempli dans le champ Objet, sinon « Objet : » en première ligne)", p.emailSubject) {
+                        p = p.copy(emailSubject = it)
+                    }
+                }
                 OutlinedTextField(p.prefix, { p = p.copy(prefix = it) }, label = { Text("Texte avant (optionnel)") })
                 OutlinedTextField(p.suffix, { p = p.copy(suffix = it) }, label = { Text("Texte après (optionnel)") })
                 Text("Couleur de la bulle", style = MaterialTheme.typography.labelLarge)

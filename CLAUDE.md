@@ -17,6 +17,10 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - `Preset.kt` (`Style`, `Preset`, `AppRule`, `Defaults`), `Styles.kt` — rule-based styles (EMAIL greeting/
     closing/signature, MESSAGE, NOTES, CLEAN, RAW). No LLM yet (roadmap: on-device LLM like desktop Qwen)
   - `Pipeline.kt` — raw → commands → dictionary → fillers → style → prefix/suffix (+ trailing space)
+  - `EmailSubject.kt` — Courriel presets (`Preset.emailSubject`, on by default): rule-based subject (skips greeting,
+    small talk, « je vous écris pour… », ≤ 8 words) → `Pipeline.Result.subject`/`subjectLine`. The service fills the app's
+    empty subject field (view id/hint « subject »/« objet »), else puts « Objet : … » first in an empty body; dictating in
+    the subject field writes only the subject
   - `Insertion.kt` — merge into the field at the cursor (spacing, mid-sentence lowercase, selection)
   - `Settings.kt` — kotlinx.serialization JSON, `sanitized()` keeps presets/default/app rules consistent
 - `app/` — Android (minSdk 26, target 35, Compose)

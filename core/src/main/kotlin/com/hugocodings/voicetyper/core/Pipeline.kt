@@ -3,7 +3,11 @@ package com.hugocodings.voicetyper.core
 /** Raw recognizer text → what gets inserted, for a given preset and target app. */
 object Pipeline {
 
-    data class Result(val text: String, val undo: Boolean = false)
+    /**
+     * [subject] (Courriel style): generated email subject; [subjectLine] = "Objet : …" to put first when
+     * the app has no empty subject field to fill.
+     */
+    data class Result(val text: String, val undo: Boolean = false, val subject: String? = null, val subjectLine: String? = null)
 
     private val FR_HINTS = setOf("je", "tu", "le", "la", "les", "et", "est", "que", "pour", "pas", "une", "des", "bonjour", "merci", "avec", "vous", "nous", "c'est")
     private val EN_HINTS = setOf("i", "you", "the", "and", "is", "that", "for", "not", "a", "an", "of", "hello", "thanks", "with", "we", "it's", "to")
@@ -32,9 +36,10 @@ object Pipeline {
         t = Dictionary.applyVocabulary(t, settings.vocabulary)
         if (preset.removeFillers) t = Text.removeFillers(t, lang)
         if (t.isBlank()) return Result("")
+        val subject = if (preset.style == Style.EMAIL && preset.emailSubject) EmailSubject.generate(t, lang) else null
         t = Styles.apply(preset.style, t, lang, settings.signature)
         t = preset.prefix + t + preset.suffix
         if (settings.trailingSpace && preset.style !in setOf(Style.EMAIL, Style.NOTES) && !t.endsWith("\n")) t += " "
-        return Result(t)
+        return Result(t, subject = subject, subjectLine = subject?.let { EmailSubject.line(it, lang) })
     }
 }

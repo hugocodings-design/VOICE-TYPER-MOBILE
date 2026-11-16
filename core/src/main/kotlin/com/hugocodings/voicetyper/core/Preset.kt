@@ -24,6 +24,8 @@ data class Preset(
     /** Text added before / after every dictation with this preset (e.g. "— envoyé à la voix"). */
     val prefix: String = "",
     val suffix: String = "",
+    /** Courriel style: generate a subject from the text (subject field, else an « Objet : » first line). */
+    val emailSubject: Boolean = true,
     /** Bubble colour (ARGB) so you can see which preset is active. */
     val color: Long = 0xFF22C55E,
 )

@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.HapticFeedbackConstants
@@ -436,7 +437,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             else -> {
                 lastDictation = result.text
                 overlay.hideCaption()
-                write(result.text, keepCase = preset.style in setOf(Style.EMAIL, Style.NOTES, Style.RAW))
+                val keepCase = preset.style in setOf(Style.EMAIL, Style.NOTES, Style.RAW)
+                if (result.subject != null) writeEmail(result, keepCase) else write(result.text, keepCase)
                 haptic()
             }
         }
@@ -487,6 +489,55 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Voice Typer", text))
         val where = if (dictationPkg != null && node == null) " de ${appLabel(dictationPkg)}" else ""
         overlay.showCaption("Champ$where plus accessible : le texte est copié, collez-le", 3500)
+    }
+
+    /**
+     * Courriel with a generated subject: dictating in the subject field writes only the subject; otherwise the
+     * app's empty subject field (Gmail, Outlook…) is filled, else « Objet : … » goes first in an empty body.
+     */
+    private fun writeEmail(result: Pipeline.Result, keepCase: Boolean) {
+        val subject = result.subject ?: return write(result.text, keepCase)
+        val node = dictationNode()
+        if (node != null && isSubjectField(node)) { write(subject, keepCase = true, node = node); return }
+        var text = result.text
+        when (fillSubjectField(node, subject)) {
+            SubjectFill.FILLED -> overlay.showCaption("Objet : $subject", 2000)
+            SubjectFill.ALREADY_SET -> Unit
+            SubjectFill.NO_FIELD -> {
+                val empty = node == null || node.isShowingHintText || node.text.isNullOrEmpty()
+                if (empty && result.subjectLine != null) text = result.subjectLine + "\n\n" + text
+            }
+        }
+        DiagnosticLog.add("Objet généré (${subject.length} caractères)")
+        write(text, keepCase, node)
+    }
+
+    private enum class SubjectFill { FILLED, ALREADY_SET, NO_FIELD }
+
+    private fun fillSubjectField(body: AccessibilityNodeInfo?, subject: String): SubjectFill {
+        val root = body?.window?.root ?: rootInActiveWindow ?: return SubjectFill.NO_FIELD
+        val field = findNode(root) { it.isEditable && it != body && isSubjectField(it) } ?: return SubjectFill.NO_FIELD
+        if (!field.isShowingHintText && !field.text.isNullOrBlank()) return SubjectFill.ALREADY_SET
+        val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, subject) }
+        return if (field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) SubjectFill.FILLED else SubjectFill.NO_FIELD
+    }
+
+    private fun isSubjectField(n: AccessibilityNodeInfo): Boolean {
+        val id = n.viewIdResourceName?.substringAfter(":id/")?.lowercase().orEmpty()
+        if ("subject" in id || "objet" in id) return true
+        val hint = (n.hintText ?: if (n.isShowingHintText) n.text else null)?.toString()?.trim()?.lowercase().orEmpty()
+        val desc = n.contentDescription?.toString()?.trim()?.lowercase().orEmpty()
+        return listOf(hint, desc).any { it == "objet" || it == "subject" || it == "add a subject" || it == "ajouter un objet" }
+    }
+
+    private fun findNode(root: AccessibilityNodeInfo, depth: Int = 0, match: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+        if (match(root)) return root
+        if (depth > 40) return null
+        for (i in 0 until root.childCount) {
+            val c = root.getChild(i) ?: continue
+            findNode(c, depth + 1, match)?.let { return it }
+        }
+        return null
     }
 
     private fun haptic() {

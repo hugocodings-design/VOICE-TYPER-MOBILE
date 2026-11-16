@@ -111,6 +111,35 @@ class DictionaryTest {
     }
 }
 
+class EmailSubjectTest {
+    @Test fun skipsGreetingSmallTalkAndLeadIn() {
+        assertEquals("Confirmer la réunion de lundi à 10 h",
+            EmailSubject.generate("Bonjour Marc, j'espère que tu vas bien. Je t'écris pour confirmer la réunion de lundi à 10 h. Merci", Lang.FR))
+        assertEquals("Le rapport trimestriel est prêt",
+            EmailSubject.generate("bonjour je voulais vous dire que le rapport trimestriel est prêt", Lang.FR))
+        assertEquals("The invoice for October",
+            EmailSubject.generate("Hi Sarah, I hope you're doing well. I'm writing about the invoice for October.", Lang.EN))
+    }
+
+    @Test fun longRunOnIsShortened() {
+        val s = EmailSubject.generate("je vous écris au sujet du budget de l'équipe pour l'année prochaine et des embauches prévues en mars", Lang.FR)!!
+        assertEquals("Budget de l'équipe pour l'année prochaine", s)
+        assertTrue(s.split(" ").size <= 8)
+    }
+
+    @Test fun nothingButGreetingGivesNoSubject() {
+        assertEquals(null, EmailSubject.generate("Bonjour Marc, merci", Lang.FR))
+    }
+
+    @Test fun pipelineGivesSubjectOnlyForEmail() {
+        val s = Settings()
+        val r = Pipeline.process("bonjour je t'écris pour le souper de vendredi", s.preset("email")!!, s)
+        assertEquals("Le souper de vendredi", r.subject)
+        assertEquals("Objet : Le souper de vendredi", r.subjectLine)
+        assertEquals(null, Pipeline.process("le souper de vendredi", s.preset("normal")!!, s).subject)
+    }
+}
+
 class StylesTest {
     @Test fun messageDropsFinalPeriod() {
         assertEquals("On se voit demain", Styles.message("on se voit demain."))
