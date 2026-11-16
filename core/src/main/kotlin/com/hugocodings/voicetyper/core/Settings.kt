@@ -20,6 +20,10 @@ data class Settings(
     /** Words written as typed whenever something close is heard (no « entendu »), also hinted to Whisper. */
     val vocabulary: List<String> = emptyList(),
     val signature: String = "",
+    /** Pasted client email (« Réponse à un client »): its names/terms are used by Courriel dictations while not empty. */
+    val clientContext: String = "",
+    /** Terms of the client email the user removed (wrongly detected). */
+    val clientIgnoredTerms: List<String> = emptyList(),
     val bubbleMode: BubbleMode = BubbleMode.WHEN_TYPING,
     /** Apps where the bubble never shows (long press → « Masquer la bulle ici »). */
     val hiddenApps: List<String> = emptyList(),
@@ -39,6 +43,14 @@ data class Settings(
     val tapToStop: Boolean = true,
 ) {
     fun preset(id: String?): Preset? = presets.firstOrNull { it.id == id }
+
+    /** The client context, when one is pasted. */
+    fun client(lang: Lang = language ?: Lang.FR): ClientContext? =
+        if (clientContext.isBlank()) null else ClientContexts.extract(clientContext, lang, clientIgnoredTerms)
+
+    /** Words to respect for [preset]: the user's vocabulary, plus the client's terms for Courriel presets. */
+    fun vocabularyFor(preset: Preset?): List<String> =
+        if (preset?.style == Style.EMAIL) vocabulary + (client()?.terms ?: emptyList()) else vocabulary
 
     /** The preset for [packageName]: its app rule, else the default preset. */
     fun presetFor(packageName: String?): Preset {

@@ -32,6 +32,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +45,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hugocodings.voicetyper.core.BubbleMode
+import com.hugocodings.voicetyper.core.EmailSubject
 import com.hugocodings.voicetyper.core.Engine
 import com.hugocodings.voicetyper.core.ModelCatalog
 import com.hugocodings.voicetyper.core.WhisperModel
@@ -89,6 +92,7 @@ private fun Screen() {
         ) {
             item { StatusCard() }
             item { TryCard() }
+            item { ClientReplyCard(s) }
             item { DiagnosticCard(s) }
             item { EngineCard(s) }
             item { LanguageCard(s) }
@@ -221,6 +225,102 @@ private fun TryCard() {
     var text by remember { mutableStateOf("") }
     Section("Essayer", "Touchez le champ : la bulle apparaît. Touchez-la, parlez, touchez-la encore. Appui long = autre préréglage.") {
         OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 110.dp), placeholder = { Text("Dictez ici…") })
+    }
+}
+
+// ---------------- client reply ----------------
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ClientReplyCard(s: Settings) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pasted by remember { mutableStateOf(s.clientContext) }
+    var reply by remember { mutableStateOf("") }
+    var dictating by remember { mutableStateOf(false) }
+    var hint by remember { mutableStateOf<String?>(null) }
+    val focus = remember { FocusRequester() }
+    val client = remember(s.clientContext, s.clientIgnoredTerms, s.language) { s.client() }
+    val lang = s.language ?: Lang.FR
+    val subject = client?.replySubject ?: reply.takeIf { it.isNotBlank() }?.let { EmailSubject.generate(it, lang) }
+
+    LaunchedEffect(dictating) {
+        while (dictating) {
+            kotlinx.coroutines.delay(300)
+            dictating = VoiceAccessibilityService.instance?.isDictating == true
+        }
+    }
+
+    fun setContext(text: String) {
+        pasted = text
+        update { it.copy(clientContext = text, clientIgnoredTerms = if (text.isBlank()) emptyList() else it.clientIgnoredTerms) }
+    }
+
+    Section("Réponse à un client", "Collez le courriel reçu : le nom du client, l'objet et ses termes (personnes, entreprises, " +
+        "sigles) sont respectés dans vos dictées Courriel, ici comme dans Gmail ou Outlook, tant que ce champ est rempli. " +
+        "Tout reste sur le téléphone.") {
+        OutlinedTextField(pasted, { setContext(it) }, Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 220.dp),
+            label = { Text("Courriel du client") }, placeholder = { Text("Collez le courriel reçu ici…") })
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                val clip = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+                val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                if (text.isNotBlank()) setContext(text) else hint = "Le presse-papiers est vide : copiez d'abord le courriel du client."
+            }) { Icon(Icons.Filled.ContentPaste, null); Spacer(Modifier.width(6.dp)); Text("Coller") }
+            if (pasted.isNotEmpty()) TextButton(onClick = { setContext(""); reply = "" }) { Text("Effacer le contexte") }
+        }
+        if (client != null) {
+            Text("À : " + (client.name ?: "?") + (client.email?.let { " <$it>" } ?: ""), style = MaterialTheme.typography.bodyMedium)
+            if (client.terms.isNotEmpty()) {
+                Text("Termes respectés (touchez pour retirer) :", style = MaterialTheme.typography.labelMedium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    client.terms.forEach { t ->
+                        InputChip(selected = false, onClick = { update { it.copy(clientIgnoredTerms = it.clientIgnoredTerms + t) } },
+                            label = { Text(t) }, trailingIcon = { Icon(Icons.Filled.Close, "Retirer", Modifier.size(16.dp)) })
+                    }
+                }
+            }
+            if (s.clientIgnoredTerms.isNotEmpty()) TextButton(onClick = { update { it.copy(clientIgnoredTerms = emptyList()) } }) {
+                Text("Remettre les ${s.clientIgnoredTerms.size} terme(s) retiré(s)")
+            }
+        }
+        if (subject != null) Text("Objet : $subject", fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(reply, { reply = it }, Modifier.fillMaxWidth().heightIn(min = 140.dp).focusRequester(focus),
+            label = { Text("Réponse") }, placeholder = { Text("Touchez « Dicter la réponse » et parlez…") })
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = {
+                val svc = VoiceAccessibilityService.instance
+                if (svc == null) { hint = "Activez d'abord Voice Typer dans Accessibilité (étape 1 en haut)."; return@Button }
+                if (dictating) { svc.dictateFromApp(); return@Button }
+                hint = null
+                focus.requestFocus()
+                scope.launch {
+                    kotlinx.coroutines.delay(350) // let the service see the focused field
+                    dictating = svc.dictateFromApp()
+                    if (!dictating) hint = "Touchez le champ Réponse, puis réessayez."
+                }
+            }) {
+                Icon(if (dictating) Icons.Filled.Stop else Icons.Filled.Mic, null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (dictating) "Terminer" else "Dicter la réponse")
+            }
+        }
+        if (reply.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                context.getSystemService(android.content.ClipboardManager::class.java)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Réponse", reply))
+                hint = "Réponse copiée."
+            }) { Icon(Icons.Filled.ContentCopy, null); Spacer(Modifier.width(6.dp)); Text("Copier") }
+            OutlinedButton(onClick = {
+                val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + (client?.email ?: ""))).apply {
+                    putExtra(Intent.EXTRA_SUBJECT, subject.orEmpty())
+                    putExtra(Intent.EXTRA_TEXT, reply)
+                }
+                runCatching { context.startActivity(Intent.createChooser(intent, "Envoyer la réponse")) }
+                    .onFailure { hint = "Aucune application de courriel trouvée : utilisez Copier." }
+            }) { Icon(Icons.Filled.Send, null); Spacer(Modifier.width(6.dp)); Text("Courriel") }
+        }
+        hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 

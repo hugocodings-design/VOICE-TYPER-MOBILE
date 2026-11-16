@@ -70,6 +70,9 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     /** True during any dictation step (listening, recording, transcribing). */
     private val busy: Boolean get() = speech.isActive || capturing || transcribing?.isActive == true
 
+    /** Listening, about to listen or transcribing (the in-app button shows « Arrêter »). */
+    val isDictating: Boolean get() = pendingStart != null || (::speech.isInitialized && busy)
+
     private fun cancelPendingStart(): Boolean {
         val p = pendingStart ?: return false
         main.removeCallbacks(p)
@@ -90,6 +93,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         capture = AudioCapture(this)
         inserter = TextInserter(this)
         running = true
+        instance = this
         // pick the fastest Whisper build for this processor now (cheap), so the first dictation does not wait
         scope.launch(kotlinx.coroutines.Dispatchers.Default) { WhisperNative.ensureBackends(this@VoiceAccessibilityService) }
         scope.launch {
@@ -342,7 +346,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         overlay.bubble.state = BubbleView.State.WORKING
         val audioSecs = pcm.size / AudioCapture.RATE.toFloat()
         val lang = dictationLang?.tag ?: "auto"
-        val prompt = Dictionary.whisperPrompt(settings.replacements, settings.vocabulary)
+        val prompt = Dictionary.whisperPrompt(settings.replacements, settings.vocabularyFor(dictationPreset))
         val s = settings
         transcribing = scope.launch {
             val t0 = System.currentTimeMillis()
@@ -497,6 +501,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
      */
     private fun writeEmail(result: Pipeline.Result, keepCase: Boolean) {
         val subject = result.subject ?: return write(result.text, keepCase)
+        if (dictationPkg == packageName) return write(result.text, keepCase) // Voice Typer's reply card shows its own subject
         val node = dictationNode()
         if (node != null && isSubjectField(node)) { write(subject, keepCase = true, node = node); return }
         var text = result.text
@@ -561,6 +566,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
     override fun onUnbind(intent: Intent?): Boolean {
         running = false
+        if (instance === this) instance = null
         if (::speech.isInitialized) speech.cancel()
         if (::capture.isInitialized) { capturing = false; capture.stop() }
         transcribing?.cancel()
@@ -572,13 +578,31 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
     override fun onDestroy() {
         running = false
+        if (instance === this) instance = null
         scope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * « Dicter la réponse » button of Voice Typer's client-reply card: same as a bubble tap on the focused reply
+     * field, with the first Courriel preset. A second press stops (like the bubble). False if no field is focused.
+     */
+    fun dictateFromApp(): Boolean {
+        if (isDictating) { onBubbleTap(); return true }
+        refreshBubble()
+        if (currentTarget() == null) return false
+        val preset = settings.presets.firstOrNull { it.style == Style.EMAIL } ?: settings.presetFor(targetPkg)
+        startDictation(preset)
+        return true
     }
 
     companion object {
         /** True while the service is connected (shown on the app's status card). */
         @Volatile var running: Boolean = false
+            private set
+
+        /** The connected service, for the in-app dictation button (same process). */
+        @Volatile var instance: VoiceAccessibilityService? = null
             private set
     }
 }

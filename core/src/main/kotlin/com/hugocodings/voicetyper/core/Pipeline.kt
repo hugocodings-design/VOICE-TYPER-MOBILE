@@ -33,11 +33,12 @@ object Pipeline {
         var t = text
         if (preset.voiceCommands) t = VoiceCommands.apply(t, lang)
         t = Dictionary.apply(t, Dictionary.forApp(settings.replacements, settings.appDictionaries, app))
-        t = Dictionary.applyVocabulary(t, settings.vocabulary)
+        val client = if (preset.style == Style.EMAIL) settings.client(lang) else null
+        t = Dictionary.applyVocabulary(t, settings.vocabulary + (client?.terms ?: emptyList()))
         if (preset.removeFillers) t = Text.removeFillers(t, lang)
         if (t.isBlank()) return Result("")
-        val subject = if (preset.style == Style.EMAIL && preset.emailSubject) EmailSubject.generate(t, lang) else null
-        t = Styles.apply(preset.style, t, lang, settings.signature)
+        val subject = if (preset.style == Style.EMAIL && preset.emailSubject) client?.replySubject ?: EmailSubject.generate(t, lang) else null
+        t = Styles.apply(preset.style, t, lang, settings.signature, client?.firstName)
         t = preset.prefix + t + preset.suffix
         if (settings.trailingSpace && preset.style !in setOf(Style.EMAIL, Style.NOTES) && !t.endsWith("\n")) t += " "
         return Result(t, subject = subject, subjectLine = subject?.let { EmailSubject.line(it, lang) })

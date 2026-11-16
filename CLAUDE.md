@@ -21,6 +21,11 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     small talk, « je vous écris pour… », ≤ 8 words) → `Pipeline.Result.subject`/`subjectLine`. The service fills the app's
     empty subject field (view id/hint « subject »/« objet »), else puts « Objet : … » first in an empty body; dictating in
     the subject field writes only the subject
+  - `ClientContext.kt` — pasted client email (`Settings.clientContext`, card « Réponse à un client »): rule-based sender
+    name (De :/From:, else line after the closing, else address), address, « RE : » subject and proper nouns (capitalised
+    mid-sentence, acronyms, signature lines; minus `clientIgnoredTerms`). While set, Courriel dictations everywhere use the
+    terms as vocabulary (+ Whisper prompt, `Settings.vocabularyFor`), « Bonjour <prénom>, » and the RE subject.
+    The card's « Dicter la réponse » focuses its reply field and calls `VoiceAccessibilityService.instance.dictateFromApp()`
   - `Insertion.kt` — merge into the field at the cursor (spacing, mid-sentence lowercase, selection)
   - `Settings.kt` — kotlinx.serialization JSON, `sanitized()` keeps presets/default/app rules consistent
 - `app/` — Android (minSdk 26, target 35, Compose)
@@ -59,7 +64,7 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - `MicService` — foreground service type microphone while dictating (best effort); the recognizer starts 400 ms later
   - `SettingsRepository` — StateFlow shared by service and activity (same process), SharedPreferences JSON
   - `DiagnosticLog` — in-memory event log (never dictated text) shown/copied in the Diagnostic card (raw AudioRecord peak test + recognizer test)
-  - `MainActivity` — single Compose screen: setup steps, try field, diagnostic, language, presets, per-app, dictionary, signature, bubble, commands
+  - `MainActivity` — single Compose screen: setup steps, try field, client reply, diagnostic, language, presets, per-app, dictionary, signature, bubble, commands
 
 ## Build
 - No Android SDK in cloud sessions (dl.google.com blocked): run core tests with `-PcoreOnly`; the APK is

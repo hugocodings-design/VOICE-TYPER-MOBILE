@@ -3,11 +3,11 @@ package com.hugocodings.voicetyper.core
 /** The text shaping of each [Style]. Input already has voice commands, dictionary and fillers applied. */
 object Styles {
 
-    fun apply(style: Style, text: String, lang: Lang, signature: String): String = when (style) {
+    fun apply(style: Style, text: String, lang: Lang, signature: String, greetName: String? = null): String = when (style) {
         Style.RAW -> Text.capitalizeFirst(text)
         Style.CLEAN -> Text.ensureFinalPeriod(Text.capitalizeSentences(Text.capitalizeFirst(text)))
         Style.MESSAGE -> message(text)
-        Style.EMAIL -> email(text, lang, signature)
+        Style.EMAIL -> email(text, lang, signature, greetName)
         Style.NOTES -> notes(text)
     }
 
@@ -73,9 +73,11 @@ object Styles {
         else sentences to null
     }
 
-    fun email(text: String, lang: Lang, signature: String): String {
+    /** [greetName]: the client's name from the pasted email, used when the dictation has no greeting. */
+    fun email(text: String, lang: Lang, signature: String, greetName: String? = null): String {
         val greeting = splitGreeting(text, lang)
-        val greetLine = greeting?.line ?: if (lang == Lang.FR) "Bonjour," else "Hello,"
+        val hello = if (lang == Lang.FR) "Bonjour" else "Hello"
+        val greetLine = greeting?.line ?: if (greetName.isNullOrBlank()) "$hello," else "$hello $greetName,"
         val body = greeting?.rest ?: text
         val (sentences, closing) = splitClosing(
             Text.sentences(Text.capitalizeSentences(Text.capitalizeFirst(body.trim()))), lang,

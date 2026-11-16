@@ -140,6 +140,60 @@ class EmailSubjectTest {
     }
 }
 
+class ClientContextTest {
+    private val mail = """
+        De : Marie-Ève Tremblay <me.tremblay@construction-levesque.ca>
+        Envoyé : 14 novembre 2026 09:12
+        À : Hugo
+        Objet : RE: Soumission pour le chantier de Lévis
+
+        Bonjour Hugo,
+
+        Suite à notre appel, pouvez-vous confirmer le prix du béton pour le projet Les Jardins Saint-Romuald ?
+        Notre contrôleur, Jean-Philippe Côté, doit approuver avec la SCHL avant vendredi.
+
+        Merci,
+        Marie-Ève Tremblay
+        Construction Lévesque inc.
+        418 555-1234
+    """.trimIndent()
+
+    @Test fun extractsSenderSubjectAndTerms() {
+        val c = ClientContexts.extract(mail)
+        assertEquals("Marie-Ève Tremblay", c.name)
+        assertEquals("Marie-Ève", c.firstName)
+        assertEquals("me.tremblay@construction-levesque.ca", c.email)
+        assertEquals("RE : Soumission pour le chantier de Lévis", c.replySubject)
+        for (t in listOf("Marie-Ève", "Tremblay", "Jardins Saint-Romuald", "Jean-Philippe Côté", "SCHL", "Construction Lévesque inc.", "Lévis"))
+            assertTrue(c.terms.any { it == t }, "$t missing in ${c.terms}")
+        for (t in listOf("Bonjour", "Merci", "Notre", "Hugo", "Suite", "Envoyé", "Soumission"))
+            assertTrue(c.terms.none { it == t }, "$t should not be in ${c.terms}")
+    }
+
+    @Test fun signatureNameWithoutHeader() {
+        val c = ClientContexts.extract("Allo, peux-tu m'envoyer le plan?\n\nCordialement,\nLuc Gagnon\nGroupe Alpha")
+        assertEquals("Luc", c.firstName)
+        assertEquals(null, c.replySubject)
+        assertTrue("Groupe Alpha" in c.terms, c.terms.toString())
+    }
+
+    @Test fun ignoredTermsAreDropped() {
+        assertTrue(ClientContexts.extract(mail, ignored = listOf("SCHL")).terms.none { it == "SCHL" })
+    }
+
+    @Test fun emailReplyUsesClientContext() {
+        val s = Settings(clientContext = mail)
+        val r = Pipeline.process("je vous confirme le prix pour les jardins saint-romuald et j'en parle à jean-philippe côté", s.preset("email")!!, s)
+        assertTrue(r.text.startsWith("Bonjour Marie-Ève,\n\n"), r.text)
+        assertTrue("les Jardins Saint-Romuald" in r.text, r.text)
+        assertTrue("Jean-Philippe Côté" in r.text, r.text)
+        assertEquals("RE : Soumission pour le chantier de Lévis", r.subject)
+        // other styles ignore the client
+        assertTrue("jardins saint-romuald" in Pipeline.process("les jardins saint-romuald", s.preset("message")!!, s).text.lowercase())
+        assertEquals("Les jardins saint-romuald", Pipeline.process("les jardins saint-romuald", s.preset("message")!!, s).text.trim())
+    }
+}
+
 class StylesTest {
     @Test fun messageDropsFinalPeriod() {
         assertEquals("On se voit demain", Styles.message("on se voit demain."))
