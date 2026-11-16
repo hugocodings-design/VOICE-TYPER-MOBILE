@@ -13,6 +13,7 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - `VoiceCommands.kt` — port of desktop `commands.py` (FR/EN commands, `isUndo` « efface ça » said alone)
   - `Dictionary.kt` — replacements (+ per-app); `Settings.vocabulary` = words without « entendu »: `applyVocabulary`
     rewrites close spellings (case/accents/spaces/hyphens ignored; parts ≥ 5 letters may be split anywhere) as typed,
+    then `soundsLike` (phonetic key C/K/QU, PH/F… + edit distance 0/1/2 by key length, same first sound, ±1 word),
     and they lead the Whisper prompt. `Text.kt` — capitalisation, fillers, sentences
   - `Preset.kt` (`Style`, `Preset`, `AppRule`, `Defaults`), `Styles.kt` — rule-based styles (EMAIL greeting/
     closing/signature, MESSAGE, NOTES, CLEAN, RAW). No LLM yet (roadmap: on-device LLM like desktop Qwen)
@@ -27,7 +28,7 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     terms as vocabulary (+ Whisper prompt, `Settings.vocabularyFor`), « Bonjour <prénom>, » and the RE subject.
     The card has preset chips (`Settings.replyPresetId`, default first Courriel) and « Dicter la réponse », which focuses its
     reply field and calls `VoiceAccessibilityService.instance.dictateFromApp(preset)`: the client context then applies to
-    any preset (`Pipeline.process(useClient)`). Presets can be deleted (trash icon, never the last one)
+    any preset (`Pipeline.process(useClient)`); « Corriger avec les termes » reapplies them to the reply text. Presets can be deleted (trash icon, never the last one)
   - `Insertion.kt` — merge into the field at the cursor (spacing, mid-sentence lowercase, selection)
   - `Settings.kt` — kotlinx.serialization JSON, `sanitized()` keeps presets/default/app rules consistent
 - `app/` — Android (minSdk 26, target 35, Compose)

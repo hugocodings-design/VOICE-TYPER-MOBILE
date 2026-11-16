@@ -86,8 +86,20 @@ class DictionaryTest {
         assertEquals("J'ouvre Tailscale et ChatGPT", Dictionary.applyVocabulary("J'ouvre tail scale et chat-gpt", v))
         assertEquals("Merci Éric, FLASH LINGO marche", Dictionary.applyVocabulary("Merci eric, flash lingo marche", v))
         assertEquals("ChatGPT", Dictionary.applyVocabulary("chatgpt", v))
-        assertEquals("tailscales ericsson", Dictionary.applyVocabulary("tailscales ericsson", v))
+        assertEquals("Tailscale ericsson", Dictionary.applyVocabulary("tailscales ericsson", v))
         assertEquals("a b", Dictionary.applyVocabulary("a b", listOf("A", "$1")))
+    }
+
+    @Test fun vocabularySoundsAlike() {
+        val v = listOf("Kampwise", "Erika Jacques", "Chic-Chocs", "Saint-Laurent", "Lévis")
+        assertEquals("J'utilise Kampwise tous les jours", Dictionary.applyVocabulary("J'utilise Campwise tous les jours", v))
+        assertEquals("J'utilise Kampwise", Dictionary.applyVocabulary("J'utilise camp wise", v))
+        assertEquals("Merci Erika Jacques pour", Dictionary.applyVocabulary("Merci Érica Jack pour", v))
+        assertEquals("dans les Chic-Chocs l'hiver", Dictionary.applyVocabulary("dans les chic chocs l'hiver", v))
+        assertEquals("le fleuve Saint-Laurent", Dictionary.applyVocabulary("le fleuve Saint Laurant", v))
+        // ordinary words are left alone
+        val plain = "Les vis du camp sont prêtes, on se voit mercredi à la station touristique."
+        assertEquals(plain, Dictionary.applyVocabulary(plain, v))
     }
 
     @Test fun vocabularyInWhisperPromptAndPipeline() {

@@ -45,6 +45,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hugocodings.voicetyper.core.BubbleMode
+import com.hugocodings.voicetyper.core.Dictionary
 import com.hugocodings.voicetyper.core.EmailSubject
 import com.hugocodings.voicetyper.core.Engine
 import com.hugocodings.voicetyper.core.ModelCatalog
@@ -306,6 +307,11 @@ private fun ClientReplyCard(s: Settings) {
                 Text(if (dictating) "Terminer" else "Dicter la réponse")
             }
         }
+        if (reply.isNotBlank()) TextButton(onClick = {
+            val fixed = Dictionary.applyVocabulary(reply, s.vocabularyFor(replyPreset, useClient = true))
+            hint = if (fixed == reply) "Rien à corriger : les termes sont déjà respectés." else "Termes corrigés."
+            reply = fixed
+        }) { Icon(Icons.Filled.Spellcheck, null); Spacer(Modifier.width(6.dp)); Text("Corriger avec les termes") }
         if (reply.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
                 context.getSystemService(android.content.ClipboardManager::class.java)
