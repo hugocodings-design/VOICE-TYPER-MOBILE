@@ -219,6 +219,16 @@ class ClientContextTest {
 }
 
 class StylesTest {
+    @Test fun noDefaultClosingWhenSignatureHasOne() {
+        val sig = "N'hésitez pas à me rappeler au 438-844-5989 pour toute question.\n\nMerci et à bientôt."
+        val out = Styles.email("bonjour Marc le contrat est signé", Lang.FR, sig)
+        assertEquals("Bonjour Marc,\n\nLe contrat est signé.\n\n$sig", out)
+        // without a closing in the signature, « Merci, » is still added
+        assertTrue(Styles.email("bonjour Marc le contrat est signé", Lang.FR, "Hugo").endsWith("Merci,\nHugo"))
+        // a dictated closing is kept
+        assertTrue(Styles.email("bonjour Marc le contrat est signé. Bonne journée", Lang.FR, sig).contains("Bonne journée,\n$sig"))
+    }
+
     @Test fun messageDropsFinalPeriod() {
         assertEquals("On se voit demain", Styles.message("on se voit demain."))
         assertEquals("Tu viens ?", Styles.message("tu viens ?"))

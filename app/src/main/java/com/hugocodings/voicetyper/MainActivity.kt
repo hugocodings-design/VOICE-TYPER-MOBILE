@@ -37,7 +37,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -227,8 +229,10 @@ private fun StepRow(label: String, done: Boolean, action: String, onClick: () ->
 private fun ClientReplyCard(s: Settings) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var pasted by remember { mutableStateOf(s.clientContext) }
-    var reply by remember { mutableStateOf("") }
+    var pastedValue by remember { mutableStateOf(TextFieldValue(s.clientContext)) }
+    var replyValue by remember { mutableStateOf(TextFieldValue("")) }
+    val pasted = pastedValue.text
+    val reply = replyValue.text
     var dictating by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
@@ -245,24 +249,20 @@ private fun ClientReplyCard(s: Settings) {
         }
     }
 
-    fun setContext(text: String) {
-        pasted = text
-        update { it.copy(clientContext = text, clientIgnoredTerms = if (text.isBlank()) emptyList() else it.clientIgnoredTerms) }
+    fun setContext(v: TextFieldValue) {
+        val changed = v.text != pastedValue.text
+        pastedValue = v
+        if (changed) update { it.copy(clientContext = v.text, clientIgnoredTerms = if (v.text.isBlank()) emptyList() else it.clientIgnoredTerms) }
     }
+    fun setReply(text: String) { replyValue = TextFieldValue(text, TextRange(text.length)) }
 
     Section("Réponse à un client", "Collez le courriel reçu : le nom du client, l'objet et ses termes (personnes, entreprises, " +
         "sigles) sont respectés dans la réponse dictée ici (tout préréglage) et dans vos dictées Courriel dans Gmail ou Outlook, " +
         "tant que ce champ est rempli. Tout reste sur le téléphone.") {
-        OutlinedTextField(pasted, { setContext(it) }, Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 220.dp),
+        OutlinedTextField(pastedValue, { setContext(it) }, Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 220.dp),
             label = { Text("Courriel du client") }, placeholder = { Text("Collez le courriel reçu ici…") })
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = {
-                val clip = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
-                val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
-                if (text.isNotBlank()) setContext(text) else hint = "Le presse-papiers est vide : copiez d'abord le courriel du client."
-            }) { Icon(Icons.Filled.ContentPaste, null); Spacer(Modifier.width(6.dp)); Text("Coller") }
-            if (pasted.isNotEmpty()) TextButton(onClick = { setContext(""); reply = "" }) { Text("Effacer le contexte") }
-        }
+        EditButtons(pastedValue, { setContext(it) }, onHint = { hint = it })
+        if (pasted.isNotEmpty()) TextButton(onClick = { setContext(TextFieldValue("")); setReply("") }) { Text("Effacer le contexte") }
         if (client != null) {
             Text("À : " + (client.name ?: "?") + (client.email?.let { " <$it>" } ?: ""), style = MaterialTheme.typography.bodyMedium)
             if (client.terms.isNotEmpty()) {
@@ -278,6 +278,10 @@ private fun ClientReplyCard(s: Settings) {
                 Text("Remettre les ${s.clientIgnoredTerms.size} terme(s) retiré(s)")
             }
         }
+        if (subject != null) Text("Objet : $subject", fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(replyValue, { replyValue = it }, Modifier.fillMaxWidth().heightIn(min = 140.dp).focusRequester(focus),
+            label = { Text("Réponse") }, placeholder = { Text("Touchez « Dicter la réponse » et parlez…") })
+        EditButtons(replyValue, { replyValue = it }, onHint = { hint = it })
         Text("Préréglage de la réponse", style = MaterialTheme.typography.labelMedium)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             s.presets.forEach { p ->
@@ -286,9 +290,6 @@ private fun ClientReplyCard(s: Settings) {
             }
         }
         Text(replyPreset.style.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (subject != null) Text("Objet : $subject", fontWeight = FontWeight.SemiBold)
-        OutlinedTextField(reply, { reply = it }, Modifier.fillMaxWidth().heightIn(min = 140.dp).focusRequester(focus),
-            label = { Text("Réponse") }, placeholder = { Text("Touchez « Dicter la réponse » et parlez…") })
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = {
                 val svc = VoiceAccessibilityService.instance
@@ -310,14 +311,9 @@ private fun ClientReplyCard(s: Settings) {
         if (reply.isNotBlank()) TextButton(onClick = {
             val fixed = Dictionary.applyVocabulary(reply, s.vocabularyFor(replyPreset, useClient = true))
             hint = if (fixed == reply) "Rien à corriger : les termes sont déjà respectés." else "Termes corrigés."
-            reply = fixed
+            setReply(fixed)
         }) { Icon(Icons.Filled.Spellcheck, null); Spacer(Modifier.width(6.dp)); Text("Corriger avec les termes") }
         if (reply.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = {
-                context.getSystemService(android.content.ClipboardManager::class.java)
-                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Réponse", reply))
-                hint = "Réponse copiée."
-            }) { Icon(Icons.Filled.ContentCopy, null); Spacer(Modifier.width(6.dp)); Text("Copier") }
             OutlinedButton(onClick = {
                 val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + (client?.email ?: ""))).apply {
                     putExtra(Intent.EXTRA_SUBJECT, subject.orEmpty())
@@ -328,6 +324,44 @@ private fun ClientReplyCard(s: Settings) {
             }) { Icon(Icons.Filled.Send, null); Spacer(Modifier.width(6.dp)); Text("Courriel") }
         }
         hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+/**
+ * Coller / Copier / Couper for a text field: on the selection when there is one, else the whole text;
+ * Coller inserts at the cursor (replacing the selection).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EditButtons(value: TextFieldValue, onChange: (TextFieldValue) -> Unit, onHint: (String) -> Unit) {
+    val context = LocalContext.current
+    val cm = remember { context.getSystemService(android.content.ClipboardManager::class.java) }
+    val sel = value.selection
+    val hasSel = !sel.collapsed
+    val start = minOf(sel.start, sel.end).coerceIn(0, value.text.length)
+    val end = maxOf(sel.start, sel.end).coerceIn(0, value.text.length)
+    fun chosen() = if (hasSel) value.text.substring(start, end) else value.text
+    fun copy(): Boolean {
+        val t = chosen()
+        if (t.isEmpty()) return false
+        cm?.setPrimaryClip(android.content.ClipData.newPlainText("Voice Typer", t))
+        return true
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedButton(onClick = {
+            val clip = cm?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+            if (clip.isEmpty()) { onHint("Le presse-papiers est vide."); return@OutlinedButton }
+            val text = value.text.substring(0, start) + clip + value.text.substring(end)
+            onChange(TextFieldValue(text, TextRange(start + clip.length)))
+        }) { Icon(Icons.Filled.ContentPaste, null); Spacer(Modifier.width(4.dp)); Text("Coller") }
+        OutlinedButton(enabled = value.text.isNotEmpty(), onClick = {
+            if (copy()) onHint(if (hasSel) "Sélection copiée." else "Tout le texte est copié.")
+        }) { Icon(Icons.Filled.ContentCopy, null); Spacer(Modifier.width(4.dp)); Text("Copier") }
+        OutlinedButton(enabled = value.text.isNotEmpty(), onClick = {
+            if (!copy()) return@OutlinedButton
+            onChange(if (hasSel) TextFieldValue(value.text.removeRange(start, end), TextRange(start)) else TextFieldValue(""))
+            onHint(if (hasSel) "Sélection coupée." else "Tout le texte est coupé (dans le presse-papiers).")
+        }) { Icon(Icons.Filled.ContentCut, null); Spacer(Modifier.width(4.dp)); Text("Couper") }
     }
 }
 

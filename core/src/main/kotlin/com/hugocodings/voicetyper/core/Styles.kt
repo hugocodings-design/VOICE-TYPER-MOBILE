@@ -74,6 +74,12 @@ object Styles {
     }
 
     /** [greetName]: the client's name from the pasted email, used when the dictation has no greeting. */
+    /** A line of the signature starts with a closing formula (« Merci et à bientôt. », « Cordialement, »). */
+    fun signatureHasClosing(signature: String): Boolean =
+        signature.lines().map { it.trim().lowercase() }.any { line ->
+            CLOSINGS.values.flatten().any { c -> line == c || line.startsWith("$c ") || line.startsWith("$c,") || line.startsWith("$c.") || line.startsWith("$c!") }
+        }
+
     fun email(text: String, lang: Lang, signature: String, greetName: String? = null): String {
         val greeting = splitGreeting(text, lang)
         val hello = if (lang == Lang.FR) "Bonjour" else "Hello"
@@ -85,12 +91,16 @@ object Styles {
         // paragraphs of 2 sentences, like the desktop "Courriel" preset
         val paragraphs = sentences.map { Text.ensureFinalPeriod(Text.capitalizeFirst(it)) }
             .chunked(2).joinToString("\n\n") { it.joinToString(" ") }
-        val close = closing ?: if (lang == Lang.FR) "Merci," else "Thank you,"
+        // default « Merci, » only when neither the dictation nor the signature already has a closing formula
+        val close = closing ?: if (signatureHasClosing(signature)) null else if (lang == Lang.FR) "Merci," else "Thank you,"
         return buildString {
             append(greetLine).append("\n\n")
             if (paragraphs.isNotEmpty()) append(paragraphs).append("\n\n")
-            append(close)
-            if (signature.isNotBlank()) append("\n").append(signature.trim())
-        }
+            if (close != null) append(close)
+            if (signature.isNotBlank()) {
+                if (close != null) append("\n")
+                append(signature.trim())
+            }
+        }.trimEnd()
     }
 }
