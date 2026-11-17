@@ -54,6 +54,7 @@ object Styles {
         while (who.count { it.lowercase() !in TITLES } < 3 && pos < text.length) {
             val w = word.matchAt(text, pos) ?: break
             if (!w.groupValues[1][0].isUpperCase()) break
+            if (w.groupValues[1] in setOf("I", "I'm", "I’m", "I'd", "I'll", "I've")) break // English "I" is not a name
             who += w.groupValues[1]; pos = w.range.last + 1
             if (w.groupValues[2].isNotEmpty() || "," in w.groupValues[3]) break
         }

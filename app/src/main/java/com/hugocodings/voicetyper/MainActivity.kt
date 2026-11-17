@@ -619,9 +619,14 @@ private fun VocabularyCard(s: Settings) {
 @Composable
 private fun SignatureCard(s: Settings) {
     var text by remember { mutableStateOf(s.signature) }
-    Section("Signature des courriels", "Ajoutée à la fin du préréglage Courriel.") {
+    var textEn by remember { mutableStateOf(s.signatureEn) }
+    Section("Signature des courriels", "Ajoutée à la fin du préréglage Courriel. La bonne est choisie selon la langue du " +
+        "courriel dicté (sinon celle du courriel du client, sinon la langue de dictée). Sans signature anglaise, la " +
+        "française sert aussi en anglais.") {
         OutlinedTextField(text, { text = it; update { st -> st.copy(signature = it) } }, Modifier.fillMaxWidth(),
-            placeholder = { Text("Hugo\n514 555-0123") }, minLines = 2)
+            label = { Text("Signature en français") }, placeholder = { Text("Hugo\n514 555-0123") }, minLines = 2)
+        OutlinedTextField(textEn, { textEn = it; update { st -> st.copy(signatureEn = it) } }, Modifier.fillMaxWidth(),
+            label = { Text("Signature en anglais") }, placeholder = { Text("Hugo\nCall me at 514 555-0123") }, minLines = 2)
     }
 }
 

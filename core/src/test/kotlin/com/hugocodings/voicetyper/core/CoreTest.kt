@@ -219,6 +219,22 @@ class ClientContextTest {
 }
 
 class StylesTest {
+    @Test fun signatureFollowsEmailLanguage() {
+        val s = Settings(language = Lang.FR, signature = "Hugo\nMerci et à bientôt.", signatureEn = "Hugo\nThanks and talk soon.")
+        val email = s.preset("email")!!
+        val fr = Pipeline.process("bonjour Marc je vous envoie le contrat pour la semaine prochaine", email, s).text
+        assertTrue(fr.endsWith("Hugo\nMerci et à bientôt."), fr)
+        val en = Pipeline.process("hello Mark I am sending you the contract and the invoice for next week", email, s).text
+        assertTrue(en.startsWith("Hello Mark,"), en)
+        assertTrue(en.endsWith("Hugo\nThanks and talk soon."), en)
+        // no English signature: the French one is used
+        val noEn = s.copy(signatureEn = "")
+        assertTrue(Pipeline.process("hello Mark I am sending you the contract", email, noEn).text.endsWith("Merci et à bientôt."))
+        // short text that says nothing: the client's email language decides
+        val withClient = s.copy(clientContext = "From: Mark Smith <mark@acme.com>\nHi Hugo, can you send the contract to us? Thanks, Mark")
+        assertTrue(Pipeline.process("ok done", email, withClient).text.endsWith("Thanks and talk soon."))
+    }
+
     @Test fun noDefaultClosingWhenSignatureHasOne() {
         val sig = "N'hésitez pas à me rappeler au 438-844-5989 pour toute question.\n\nMerci et à bientôt."
         val out = Styles.email("bonjour Marc le contrat est signé", Lang.FR, sig)

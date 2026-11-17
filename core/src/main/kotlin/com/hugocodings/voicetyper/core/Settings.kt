@@ -19,7 +19,10 @@ data class Settings(
     val appDictionaries: List<AppDictionary> = emptyList(),
     /** Words written as typed whenever something close is heard (no « entendu »), also hinted to Whisper. */
     val vocabulary: List<String> = emptyList(),
+    /** French email signature (also used for English when [signatureEn] is empty). */
     val signature: String = "",
+    /** English email signature, picked when the email is in English. */
+    val signatureEn: String = "",
     /** Pasted client email (« Réponse à un client »): its names/terms are used by Courriel dictations while not empty. */
     val clientContext: String = "",
     /** Terms of the client email the user removed (wrongly detected). */
@@ -45,6 +48,9 @@ data class Settings(
     val tapToStop: Boolean = true,
 ) {
     fun preset(id: String?): Preset? = presets.firstOrNull { it.id == id }
+
+    /** The signature for an email in [lang]: the English one for English if set, else the French one. */
+    fun signatureFor(lang: Lang): String = if (lang == Lang.EN && signatureEn.isNotBlank()) signatureEn else signature
 
     /** The client context, when one is pasted. */
     fun client(lang: Lang = language ?: Lang.FR): ClientContext? =

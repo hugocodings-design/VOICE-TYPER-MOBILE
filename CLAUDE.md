@@ -16,7 +16,9 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     then `soundsLike` (phonetic key C/K/QU, PH/F… + edit distance 0/1/2 by key length, same first sound, ±1 word),
     and they lead the Whisper prompt. `Text.kt` — capitalisation, fillers, sentences
   - `Preset.kt` (`Style`, `Preset`, `AppRule`, `Defaults`), `Styles.kt` — rule-based styles (EMAIL greeting/
-    closing/signature — default « Merci, » only if neither the dictation nor the signature has a closing — MESSAGE, NOTES, CLEAN, RAW). No LLM yet (roadmap: on-device LLM like desktop Qwen)
+    closing/signature — default « Merci, » only if neither the dictation nor the signature has a closing — MESSAGE, NOTES, CLEAN, RAW).
+    Courriel language = `guessLang` of the text, else of the client email, else the dictation language; it picks greeting,
+    closing and `Settings.signatureFor` (`signatureEn` for English if set, else `signature`). No LLM yet (roadmap: on-device LLM like desktop Qwen)
   - `Pipeline.kt` — raw → commands → dictionary → fillers → style → prefix/suffix (+ trailing space)
   - `EmailSubject.kt` — Courriel presets (`Preset.emailSubject`, on by default): rule-based subject (skips greeting,
     small talk, « je vous écris pour… », ≤ 8 words) → `Pipeline.Result.subject`/`subjectLine`. The service fills the app's

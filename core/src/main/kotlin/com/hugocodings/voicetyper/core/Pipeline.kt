@@ -39,10 +39,15 @@ object Pipeline {
         t = Dictionary.applyVocabulary(t, settings.vocabulary + (client?.terms ?: emptyList()))
         if (preset.removeFillers) t = Text.removeFillers(t, lang)
         if (t.isBlank()) return Result("")
-        val subject = if (preset.style == Style.EMAIL && preset.emailSubject) client?.replySubject ?: EmailSubject.generate(t, lang) else null
-        t = Styles.apply(preset.style, t, lang, settings.signature, client?.firstName)
+        // Courriel: the language of what was said decides greeting, closing and signature (FR/EN); when the text
+        // does not tell, the client's email does, then the dictation language
+        val mailLang = if (preset.style == Style.EMAIL) {
+            guessLang(t, client?.let { guessLang(settings.clientContext, lang) } ?: lang)
+        } else lang
+        val subject = if (preset.style == Style.EMAIL && preset.emailSubject) client?.replySubject ?: EmailSubject.generate(t, mailLang) else null
+        t = Styles.apply(preset.style, t, mailLang, settings.signatureFor(mailLang), client?.firstName)
         t = preset.prefix + t + preset.suffix
         if (settings.trailingSpace && preset.style !in setOf(Style.EMAIL, Style.NOTES) && !t.endsWith("\n")) t += " "
-        return Result(t, subject = subject, subjectLine = subject?.let { EmailSubject.line(it, lang) })
+        return Result(t, subject = subject, subjectLine = subject?.let { EmailSubject.line(it, mailLang) })
     }
 }
