@@ -825,11 +825,12 @@ private fun PcBoostSettings(s: Settings) {
     var address by remember { mutableStateOf(s.pcAddress) }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var historyTick by remember { mutableIntStateOf(0) }
     HorizontalDivider()
     Text("Le téléphone envoie l'audio au serveur Whisper de votre PC (le même que FLASH LINGO) par Tailscale : " +
         "seuls vos appareils y ont accès et la liaison est chiffrée, à la maison comme dehors. Entrez le nom Tailscale " +
-        "du PC (finit par .ts.net, pas l'adresse 100.…). PC éteint ou injoignable : Whisper sur le téléphone " +
-        "prend le relais si un modèle est téléchargé.",
+        "du PC (finit par .ts.net, pas l'adresse 100.…). La liaison est vérifiée dès que la bulle apparaît : " +
+        "PC éteint ou injoignable → la reconnaissance du téléphone prend le relais tout de suite.",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     OutlinedTextField(address, {
         address = it.trim()
@@ -850,18 +851,47 @@ private fun PcBoostSettings(s: Settings) {
             scope.launch {
                 status = try {
                     if (!PcEngine.tailscaleUp(context)) throw java.io.IOException("Tailscale n'est pas connecté sur ce téléphone : ouvrez l'app Tailscale")
-                    "✓ Connecté : ${PcEngine.ping(address)} sur le PC"
+                    val model = PcEngine.ping(address)
+                    PcHealth.record(true, "Test : PC joignable ($model)")
+                    "✓ Connecté : $model sur le PC"
                 } catch (e: Exception) {
+                    PcHealth.record(false, "Test : ${e.message}")
                     "✗ ${e.message}"
                 }
+                historyTick++
                 busy = false
             }
         }) { Text("Tester la connexion") }
         Spacer(Modifier.width(10.dp))
         status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
+    PcHistory(historyTick)
     HorizontalDivider()
-    Text("Modèle de secours sur le téléphone (si le PC est injoignable) :", style = MaterialTheme.typography.labelLarge)
+    Text("Modèle de secours sur le téléphone (si une dictée envoyée au PC échoue, le plus rapide téléchargé est utilisé : " +
+        "Base conseillé) :", style = MaterialTheme.typography.labelLarge)
+}
+
+/** Recent PC link results (background checks, dictations, tests) to see when and why it drops. */
+@Composable
+private fun PcHistory(tick: Int) {
+    var open by remember { mutableStateOf(false) }
+    var refresh by remember { mutableIntStateOf(0) }
+    val events = remember(tick, refresh, open) { PcHealth.history }
+    if (events.isEmpty()) return
+    val fmt = remember { java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.CANADA_FRENCH) }
+    val last = events.first()
+    Text((if (last.ok) "● PC joignable" else "● PC injoignable") + " — vérifié à ${fmt.format(java.util.Date(last.at))}",
+        color = if (last.ok) Green else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    TextButton(onClick = { open = !open; refresh++ }) { Text(if (open) "Masquer l'historique" else "Historique de connexion (${events.size})") }
+    if (open) {
+        events.forEach { e ->
+            Text("${fmt.format(java.util.Date(e.at))}  ${if (e.ok) "✓" else "✗"}  ${e.what}", style = MaterialTheme.typography.bodySmall,
+                color = if (e.ok) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error)
+        }
+        Text("Les vérifications se font quand la bulle apparaît (au plus toutes les 25 s). Si le PC est injoignable, la " +
+            "dictée suivante utilise directement la reconnaissance du téléphone, sans attendre.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 /** Records 5 s and transcribes with the selected model: checks speed and accuracy on this phone. */

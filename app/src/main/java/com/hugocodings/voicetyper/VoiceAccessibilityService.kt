@@ -138,6 +138,9 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
         main.removeCallbacks(hideLater)
         if (show) {
+            if (s.engine == Engine.PC && s.pcAddress.isNotBlank() && !busy) {
+                scope.launch { PcHealth.warmUp(this@VoiceAccessibilityService, s.pcAddress) }
+            }
             overlay.showBubble(s.bubbleSizeDp, s.bubbleX, s.bubbleY)
             if (!busy) overlay.bubble.label = languageBadge()
         } else {
@@ -256,7 +259,13 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val s = settings
         val lang = preset.language ?: s.language
         dictationLang = lang
-        val usePc = s.engine == Engine.PC && s.pcAddress.isNotBlank()
+        val pcChosen = s.engine == Engine.PC && s.pcAddress.isNotBlank()
+        // PC known unreachable (Tailscale off, or the last check failed): don't record for it and wait for a timeout,
+        // use the phone's real-time recognition now (Whisper takes over there if the language pack is missing)
+        val pcDown = pcChosen && (!PcEngine.tailscaleUp(this) || PcHealth.knownDown())
+        if (pcChosen) scope.launch { PcHealth.warmUp(this@VoiceAccessibilityService, s.pcAddress, force = pcDown) }
+        val usePc = pcChosen && !pcDown
+        if (pcDown) DiagnosticLog.add("PC injoignable (${PcHealth.lastError ?: "Tailscale désactivé"}) : reconnaissance du téléphone")
         dictationPc = usePc
         // PC chosen but not set up yet: say so, and use Whisper on the phone meanwhile (Android recognition otherwise)
         val pcMissing = s.engine == Engine.PC && !usePc
@@ -268,7 +277,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         if (pcMissing) DiagnosticLog.add("PC choisi mais nom du PC manquant : " +
             (model?.let { "Whisper ${it.id} sur le téléphone" } ?: "reconnaissance Android"))
         val engineName = when {
-            usePc && !PcEngine.tailscaleUp(this) -> "Tailscale désactivé : téléphone"
+            pcDown -> "PC injoignable : téléphone"
             usePc -> "PC (boosté)"
             model != null -> "Whisper ${model.name}"
             else -> SpeechEngine.languageTag(lang)
@@ -308,6 +317,14 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val downloaded = ModelCatalog.MODELS.filter { ModelManager.isDownloaded(this, it) }
         downloaded.firstOrNull { it.id == settings.whisperModel }?.let { return it }
         return listOf("small", "base", "tiny", "turbo").firstNotNullOfOrNull { id -> downloaded.firstOrNull { it.id == id } }
+    }
+
+    /** After a failed PC request the user is already waiting: the quickest downloaded model, not the most accurate. */
+    private fun fastWhisperFallback(): WhisperModel? {
+        if (!WhisperNative.available) return null
+        val downloaded = ModelCatalog.MODELS.filter { ModelManager.isDownloaded(this, it) }
+        return listOf("base", "tiny", "small", "turbo").firstNotNullOfOrNull { id -> downloaded.firstOrNull { it.id == id } }
+            ?: downloaded.firstOrNull()
     }
 
     // ---- Whisper path ----
@@ -365,7 +382,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
                         throw e
                     } catch (e: Exception) {
                         // PC off / other network: Whisper on the phone takes over, if a model is downloaded
-                        val fb = downloadedWhisperFallback()
+                        val fb = fastWhisperFallback()
                             ?: throw IllegalStateException("PC : ${e.message}")
                         DiagnosticLog.add("PC indisponible (${e.message}) : Whisper ${fb.id} sur le téléphone")
                         usedModel = fb

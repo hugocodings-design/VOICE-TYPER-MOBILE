@@ -23,6 +23,60 @@ import java.nio.ByteOrder
  * Tailscale is the access control and the encryption: only the user's own devices are in their tailnet.
  * Protocol: GET /health → {"status","model"}; POST /transcribe?lang=fr|en, body = WAV 16 kHz mono 16-bit → {"text"}.
  */
+/**
+ * What the app knows about the PC link: a background /health check whenever the bubble shows (throttled) keeps
+ * the Tailscale tunnel warm and tells the next dictation whether to record for the PC or use the phone's real-time
+ * recognition right away. Every result goes to [history] (shown in the PC card) to find what triggers drops.
+ */
+object PcHealth {
+    data class Event(val at: Long, val ok: Boolean, val what: String)
+
+    @Volatile var lastOkAt = 0L; private set
+    @Volatile var lastFailAt = 0L; private set
+    @Volatile var lastError: String? = null; private set
+    @Volatile private var checking = false
+    private val events = ArrayDeque<Event>()
+
+    val history: List<Event> get() = synchronized(events) { events.toList().asReversed() }
+
+    /** The last check failed less than [FRESH_MS] ago and nothing succeeded since. */
+    fun knownDown(now: Long = System.currentTimeMillis()): Boolean =
+        lastFailAt > lastOkAt && now - lastFailAt < FRESH_MS
+
+    fun record(ok: Boolean, what: String) {
+        val now = System.currentTimeMillis()
+        if (ok) { lastOkAt = now; lastError = null } else { lastFailAt = now; lastError = what }
+        synchronized(events) {
+            // collapse a run of identical results: one line per change, refreshed time
+            val last = events.lastOrNull()
+            if (last != null && last.ok == ok && last.what == what) events.removeLast()
+            events.addLast(Event(now, ok, what))
+            while (events.size > 40) events.removeFirst()
+        }
+    }
+
+    /** Background check, at most every [MIN_INTERVAL_MS] (sooner after a failure is not useful either). */
+    suspend fun warmUp(context: Context, address: String, force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (checking || address.isBlank()) return
+        if (!force && now - maxOf(lastOkAt, lastFailAt) < MIN_INTERVAL_MS) return
+        checking = true
+        try {
+            if (!PcEngine.tailscaleUp(context)) { record(false, "Tailscale désactivé sur le téléphone"); return }
+            val t0 = System.currentTimeMillis()
+            val model = PcEngine.ping(address)
+            record(true, "PC joignable ($model, ${System.currentTimeMillis() - t0} ms)")
+        } catch (e: Exception) {
+            record(false, e.message ?: e.javaClass.simpleName)
+        } finally {
+            checking = false
+        }
+    }
+
+    const val FRESH_MS = 90_000L
+    const val MIN_INTERVAL_MS = 25_000L
+}
+
 object PcEngine {
     const val DEFAULT_PORT = 8766
     /** The server refuses more than one minute of audio (16000 × 2 × 60 bytes, WAV header included). */
@@ -48,7 +102,7 @@ object PcEngine {
 
     /** Returns the model name the PC runs. */
     suspend fun ping(address: String): String = withContext(Dispatchers.IO) {
-        val conn = open(address, "/health", connectMs = 4000, readMs = 5000)
+        val conn = open(address, "/health", connectMs = 5000, readMs = 5000)
         try {
             JSONObject(read(conn)).optString("model")
         } finally {
@@ -75,11 +129,18 @@ object PcEngine {
     /** The connection itself failed (nothing was sent): safe to retry. */
     private class ConnectFailed(message: String) : IOException(message)
 
-    private suspend fun transcribeOnce(address: String, pcm: FloatArray, lang: String): String = withContext(Dispatchers.IO) {
+    private suspend fun transcribeOnce(address: String, pcm: FloatArray, lang: String): String = try {
+        transcribeRaw(address, pcm, lang).also { PcHealth.record(true, "Dictée transcrite par le PC") }
+    } catch (e: IOException) {
+        PcHealth.record(false, e.message ?: e.javaClass.simpleName)
+        throw e
+    }
+
+    private suspend fun transcribeRaw(address: String, pcm: FloatArray, lang: String): String = withContext(Dispatchers.IO) {
         val secs = pcm.size / AudioCapture.RATE
         if (secs > MAX_SECONDS) throw IOException("dictée de plus d'une minute : trop longue pour le PC")
         val path = "/transcribe" + if (lang == "fr" || lang == "en") "?lang=$lang" else ""
-        val conn = open(address, path, connectMs = 4000, readMs = 20_000 + secs * 1000)
+        val conn = open(address, path, connectMs = 5000, readMs = 20_000 + secs * 1000)
         try {
             val wav = wav16(pcm)
             conn.requestMethod = "POST"

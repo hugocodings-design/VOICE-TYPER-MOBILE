@@ -62,7 +62,10 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     auth: Tailscale is the access control and encryption. Max 1 min of audio (server limit) → longer dictations and any
     failure → Whisper on the phone (`downloadedWhisperFallback`) if a model is downloaded, else the error. Cleartext allowed
     (`network_security_config`). No VPN transport (`PcEngine.tailscaleUp`, ACCESS_NETWORK_STATE) → straight to the phone,
-    no timeout; an instant connect failure (network switch) is retried once, a connect timeout is not. Do not add a server to this repo or to desktop Voice Typer (that app must never open a
+    no timeout; an instant connect failure (network switch) is retried once, a connect timeout is not. `PcHealth`: a throttled
+    (25 s) background `/health` whenever the bubble shows warms the tunnel; if the last check failed < 90 s ago (or no VPN)
+    the dictation uses Android real-time recognition right away instead of recording for the PC. A failed PC request
+    falls back to the fastest downloaded model (base > tiny > small > turbo). Results go to the PC card's history. Do not add a server to this repo or to desktop Voice Typer (that app must never open a
     network port: IT requirement, work PC); one shared PC server serves FLASH LINGO and this app
   - `MicService` — foreground service type microphone while dictating (best effort); the recognizer starts 400 ms later
   - `SettingsRepository` — StateFlow shared by service and activity (same process), SharedPreferences JSON
