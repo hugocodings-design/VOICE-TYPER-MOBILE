@@ -51,6 +51,7 @@ import com.hugocodings.voicetyper.core.Dictionary
 import com.hugocodings.voicetyper.core.EmailSubject
 import com.hugocodings.voicetyper.core.Engine
 import com.hugocodings.voicetyper.core.ModelCatalog
+import com.hugocodings.voicetyper.core.Output
 import com.hugocodings.voicetyper.core.WhisperModel
 import com.hugocodings.voicetyper.core.Lang
 import com.hugocodings.voicetyper.core.Preset
@@ -282,14 +283,6 @@ private fun ClientReplyCard(s: Settings) {
         OutlinedTextField(replyValue, { replyValue = it }, Modifier.fillMaxWidth().heightIn(min = 140.dp).focusRequester(focus),
             label = { Text("Réponse") }, placeholder = { Text("Touchez « Dicter la réponse » et parlez…") })
         EditButtons(replyValue, { replyValue = it }, onHint = { hint = it })
-        Text("Préréglage de la réponse", style = MaterialTheme.typography.labelMedium)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            s.presets.forEach { p ->
-                FilterChip(selected = p.id == replyPreset.id, onClick = { update { it.copy(replyPresetId = p.id) } },
-                    label = { Text(p.name) }, leadingIcon = { ColorDot(p.color, 10) })
-            }
-        }
-        Text(replyPreset.style.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = {
                 val svc = VoiceAccessibilityService.instance
@@ -324,6 +317,15 @@ private fun ClientReplyCard(s: Settings) {
             }) { Icon(Icons.Filled.Send, null); Spacer(Modifier.width(6.dp)); Text("Courriel") }
         }
         hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        HorizontalDivider()
+        Text("Préréglage de la réponse", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            s.presets.forEach { p ->
+                FilterChip(selected = p.id == replyPreset.id, onClick = { update { it.copy(replyPresetId = p.id) } },
+                    label = { Text(p.name) }, leadingIcon = { ColorDot(p.color, 10) })
+            }
+        }
+        Text(replyPreset.style.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -632,6 +634,7 @@ private fun SignatureCard(s: Settings) {
 
 // ---------------- bubble ----------------
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BubbleCard(s: Settings) {
     Section("Bulle") {
@@ -645,6 +648,16 @@ private fun BubbleCard(s: Settings) {
         SwitchRow("Toucher pour arrêter (sinon arrêt au silence)", s.tapToStop) { v -> update { it.copy(tapToStop = v) } }
         SwitchRow("Hors ligne seulement (recommandé)", s.offlineOnly) { v -> update { it.copy(offlineOnly = v) } }
         SwitchRow("Espace après chaque dictée", s.trailingSpace) { v -> update { it.copy(trailingSpace = v) } }
+        Text("Où va le texte dicté", style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Output.entries.forEach { o ->
+                FilterChip(s.output == o, { update { it.copy(output = o) } }, { Text(o.label) })
+            }
+        }
+        Text("« Champ + presse-papiers » ou « Presse-papiers seulement » : chaque dictée est aussi copiée, donc " +
+            "collable sur votre PC avec Lien avec Windows (presse-papiers partagé activé). Sans champ de texte, la " +
+            "dictée va toujours dans le presse-papiers. La réponse à un client reste écrite dans son champ.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SwitchRow("Vibrations", s.haptics) { v -> update { it.copy(haptics = v) } }
         TextButton(onClick = { update { it.copy(bubbleX = -1, bubbleY = -1) } }) { Text("Remettre la bulle à sa place") }
     }

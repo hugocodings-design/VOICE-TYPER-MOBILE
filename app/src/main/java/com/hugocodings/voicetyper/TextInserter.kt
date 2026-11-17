@@ -19,11 +19,12 @@ class TextInserter(private val context: Context) {
     private data class Last(val pkg: String?, val viewId: String?, val inserted: String, val at: Int)
     private var last: Last? = null
 
-    fun insert(node: AccessibilityNodeInfo, text: String, keepCase: Boolean): Boolean {
+    /** [restoreClipboard] false: the paste fallback leaves the text on the clipboard (« Champ + presse-papiers »). */
+    fun insert(node: AccessibilityNodeInfo, text: String, keepCase: Boolean, restoreClipboard: Boolean = true): Boolean {
         node.refresh()
         val existing = currentText(node)
         val merged = Insertion.merge(existing, node.textSelectionStart, node.textSelectionEnd, text, keepCase)
-        val ok = setText(node, merged.text, merged.cursor) || paste(node, merged.inserted)
+        val ok = setText(node, merged.text, merged.cursor) || paste(node, merged.inserted, restoreClipboard)
         if (ok) last = Last(node.packageName?.toString(), node.viewIdResourceName, merged.inserted, merged.at)
         return ok
     }
@@ -60,7 +61,7 @@ class TextInserter(private val context: Context) {
      * Fallback for fields that refuse ACTION_SET_TEXT (some web views): paste through the clipboard,
      * marked sensitive so it stays out of clipboard previews/history, then put the old clip back.
      */
-    private fun paste(node: AccessibilityNodeInfo, text: String): Boolean {
+    private fun paste(node: AccessibilityNodeInfo, text: String, restore: Boolean = true): Boolean {
         val cm = context.getSystemService(ClipboardManager::class.java) ?: return false
         val previous = runCatching { cm.primaryClip }.getOrNull()
         val clip = ClipData.newPlainText("Voice Typer", text)
@@ -69,7 +70,7 @@ class TextInserter(private val context: Context) {
         }
         cm.setPrimaryClip(clip)
         val ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-        if (previous != null) Handler(Looper.getMainLooper()).postDelayed({ runCatching { cm.setPrimaryClip(previous) } }, 600)
+        if (restore && previous != null) Handler(Looper.getMainLooper()).postDelayed({ runCatching { cm.setPrimaryClip(previous) } }, 600)
         return ok
     }
 }

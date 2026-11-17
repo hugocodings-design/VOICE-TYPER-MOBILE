@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import com.hugocodings.voicetyper.core.BubbleMode
 import com.hugocodings.voicetyper.core.Dictionary
 import com.hugocodings.voicetyper.core.Engine
+import com.hugocodings.voicetyper.core.Output
 import com.hugocodings.voicetyper.core.ModelCatalog
 import com.hugocodings.voicetyper.core.Settings
 import com.hugocodings.voicetyper.core.Text
@@ -242,10 +243,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
-        if (target == null && settings.bubbleMode == BubbleMode.ALWAYS) {
-            overlay.showCaption("Touchez d'abord un champ de texte", 2000)
-            return
-        }
+        if (target == null) DiagnosticLog.add("Aucun champ de texte : la dictée ira dans le presse-papiers")
         dictationPreset = preset
         dictationFromApp = fromApp
         dictationPkg = targetPkg
@@ -507,13 +505,39 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         transcribeTicker?.cancel()
     }
 
+    /** Output setting for this dictation: the in-app reply card always gets the text in its field. */
+    private fun output(): Output = settings.output.let { if (dictationFromApp && it == Output.CLIPBOARD) Output.FIELD_AND_CLIPBOARD else it }
+
+    /**
+     * Plain clipboard copy, not marked sensitive, so « Lien avec Windows » / Phone Link can sync it to the PC.
+     * (The paste fallback of [TextInserter] marks its own temporary clip sensitive and restores the old one.)
+     */
+    private fun copyToClipboard(text: String) {
+        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Voice Typer", text.trimEnd()))
+    }
+
     private fun write(text: String, keepCase: Boolean, node: AccessibilityNodeInfo? = dictationNode()) {
-        if (node != null && inserter.insert(node, text, keepCase)) { DiagnosticLog.add("Texte écrit dans le champ"); return }
-        DiagnosticLog.add("Champ introuvable ou refusé : texte copié")
-        // field gone (user left the app) or not writable (some games / secure fields): leave it on the clipboard
-        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Voice Typer", text))
-        val where = if (dictationPkg != null && node == null) " de ${appLabel(dictationPkg)}" else ""
-        overlay.showCaption("Champ$where plus accessible : le texte est copié, collez-le", 3500)
+        val out = output()
+        if (out == Output.CLIPBOARD) {
+            copyToClipboard(text)
+            DiagnosticLog.add("Texte copié (réglage : presse-papiers seulement)")
+            overlay.showCaption("Copié dans le presse-papiers", 1500)
+            return
+        }
+        val alsoCopy = out == Output.FIELD_AND_CLIPBOARD
+        if (node != null && inserter.insert(node, text, keepCase, restoreClipboard = !alsoCopy)) {
+            DiagnosticLog.add("Texte écrit dans le champ" + if (alsoCopy) " et copié" else "")
+            if (alsoCopy) copyToClipboard(text)
+            return
+        }
+        // no field (bubble shown everywhere), field gone (user left the app) or not writable: the clipboard
+        copyToClipboard(text)
+        DiagnosticLog.add(if (node == null) "Aucun champ : texte copié" else "Champ refusé : texte copié")
+        overlay.showCaption(when {
+            dictationTarget == null -> "Copié dans le presse-papiers"
+            node == null && dictationPkg != null -> "Champ de ${appLabel(dictationPkg)} plus accessible : le texte est copié, collez-le"
+            else -> "Champ non modifiable : le texte est copié, collez-le"
+        }, 3000)
     }
 
     /**
@@ -523,6 +547,9 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     private fun writeEmail(result: Pipeline.Result, keepCase: Boolean) {
         val subject = result.subject ?: return write(result.text, keepCase)
         if (dictationPkg == packageName) return write(result.text, keepCase) // Voice Typer's reply card shows its own subject
+        if (output() == Output.CLIPBOARD || dictationTarget == null) { // clipboard only: subject as first line
+            return write((result.subjectLine?.let { it + "\n\n" } ?: "") + result.text, keepCase)
+        }
         val node = dictationNode()
         if (node != null && isSubjectField(node)) { write(subject, keepCase = true, node = node); return }
         var text = result.text

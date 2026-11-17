@@ -30,7 +30,7 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     terms as vocabulary (+ Whisper prompt, `Settings.vocabularyFor`), « Bonjour <prénom>, » and the RE subject.
     The card has preset chips (`Settings.replyPresetId`, default first Courriel) and « Dicter la réponse », which focuses its
     reply field and calls `VoiceAccessibilityService.instance.dictateFromApp(preset)`: the client context then applies to
-    any preset (`Pipeline.process(useClient)`); « Corriger avec les termes » reapplies them to the reply text. Both fields have Coller/Copier/Couper (`EditButtons`: selection, else whole text); preset chips sit under the reply box. Presets can be deleted (trash icon, never the last one)
+    any preset (`Pipeline.process(useClient)`); « Corriger avec les termes » reapplies them to the reply text. Both fields have Coller/Copier/Couper (`EditButtons`: selection, else whole text); preset chips sit at the bottom of the card, under the dictation and Courriel buttons. Presets can be deleted (trash icon, never the last one)
   - `Insertion.kt` — merge into the field at the cursor (spacing, mid-sentence lowercase, selection)
   - `Settings.kt` — kotlinx.serialization JSON, `sanitized()` keeps presets/default/app rules consistent
 - `app/` — Android (minSdk 26, target 35, Compose)
@@ -45,6 +45,10 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     (chosen one, else small > base > tiny > turbo); otherwise the error tells the user to download the language
   - Whisper transcription shows an elapsed-seconds caption; a slow run (> 10 s and > 3× the audio) suggests a lighter model
   - `TextInserter` — ACTION_SET_TEXT + ACTION_SET_SELECTION, fallback clipboard (EXTRA_IS_SENSITIVE) + ACTION_PASTE; undo of the last insert
+  - `Settings.output` (Bulle card): FIELD, FIELD_AND_CLIPBOARD or CLIPBOARD — a plain, non-sensitive clip so « Lien avec
+    Windows » syncs it to the PC. No field (bubble « Toujours ») → the dictation still runs and goes to the clipboard.
+    The reply card's dictation always lands in its field. Silence stop (tap-to-stop off, Whisper/PC capture):
+    core `SilenceDetector`, adaptive noise floor (speech ≥ 3 units above it; stop 1.6 s after speech, 10 s if none)
   - Whisper path (`Settings.engine == WHISPER` + downloaded model, else falls back to Android recognition):
     `app/src/main/cpp` (whisper.cpp v1.9.5 via CMake FetchContent, `whisper_jni.cpp`). arm64-v8a: shared libs with
     `GGML_BACKEND_DL` + `GGML_CPU_ALL_VARIANTS` → one `libggml-cpu-android_armv*.so` per ARM generation; `WhisperNative.

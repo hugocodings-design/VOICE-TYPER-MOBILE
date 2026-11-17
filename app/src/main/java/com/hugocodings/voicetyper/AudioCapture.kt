@@ -6,6 +6,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
+import com.hugocodings.voicetyper.core.SilenceDetector
 import kotlin.math.log10
 import kotlin.math.sqrt
 
@@ -53,8 +54,7 @@ class AudioCapture(private val listener: Listener) {
 
     private fun loop(rec: AudioRecord, stopOnSilence: Boolean) {
         val buf = ShortArray(RATE / 10) // 100 ms
-        var spoke = false
-        var quietMs = 0
+        val silence = SilenceDetector(stepMs = 100)
         try {
             rec.startRecording()
             while (running) {
@@ -78,9 +78,10 @@ class AudioCapture(private val listener: Listener) {
                 val level = ((db + 60f) / 50f * 12f - 2f).coerceIn(-2f, 10f)
                 if (level > maxLevel) maxLevel = level
                 main.post { listener.onLevel(level) }
-                if (stopOnSilence) {
-                    if (level > 3f) { spoke = true; quietMs = 0 } else quietMs += 100
-                    if (spoke && quietMs >= 1500) { running = false; main.post { listener.onSilenceStop() } }
+                if (stopOnSilence && silence.feed(level)) {
+                    running = false
+                    DiagnosticLog.add("Capture : arrêt au silence")
+                    main.post { listener.onSilenceStop() }
                 }
             }
         } catch (e: Exception) {

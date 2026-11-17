@@ -373,3 +373,29 @@ class PcBoostSettingsTest {
         assertEquals("mon-pc.tail1234.ts.net", back.pcAddress)
     }
 }
+
+class SilenceDetectorTest {
+    private fun run(levels: List<Float>): Int? {
+        val d = SilenceDetector(stepMs = 100)
+        levels.forEachIndexed { i, l -> if (d.feed(l)) return i }
+        return null
+    }
+
+    @Test fun stopsInNoisyRoomAfterSpeech() {
+        // office noise at level 5 (above the old fixed threshold 3), speech at 9-10, then back to noise
+        val noise = List(10) { 5f }
+        val speech = List(20) { if (it % 3 == 0) 9f else 10f }
+        val stopAt = run(noise + speech + List(30) { 5f + (it % 2) * 0.5f })
+        assertTrue(stopAt != null && stopAt in 45..50, "stopAt=$stopAt")
+    }
+
+    @Test fun keepsListeningWhileTalkingWithShortPauses() {
+        val talk = (1..8).flatMap { List(15) { 9f } + List(8) { 2f } } // 0.8 s pauses
+        assertEquals(null, run(List(5) { 2f } + talk))
+    }
+
+    @Test fun quietRoomAndNoSpeechTimeout() {
+        assertTrue(run(List(5) { 0f } + List(10) { 8f } + List(20) { 0f })!! in 29..31)
+        assertEquals(99, run(List(150) { 0f })) // nothing said: stops after 10 s
+    }
+}

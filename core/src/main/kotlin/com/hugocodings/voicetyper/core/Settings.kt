@@ -7,6 +7,17 @@ import kotlinx.serialization.json.Json
 @Serializable
 enum class BubbleMode { WHEN_TYPING, ALWAYS }
 
+/**
+ * Where a bubble dictation goes: the focused field, the field + the clipboard (synced to a PC by « Lien avec
+ * Windows »), or only the clipboard. With no field at all, the text always goes to the clipboard.
+ */
+@Serializable
+enum class Output(val label: String) {
+    FIELD("Dans le champ"),
+    FIELD_AND_CLIPBOARD("Champ + presse-papiers"),
+    CLIPBOARD("Presse-papiers seulement"),
+}
+
 @Serializable
 data class Settings(
     val settingsVersion: Int = CURRENT_VERSION,
@@ -36,6 +47,7 @@ data class Settings(
     val bubbleY: Int = -1,
     val bubbleSizeDp: Int = 56,
     val trailingSpace: Boolean = true,
+    val output: Output = Output.FIELD,
     /** ANDROID = the phone's speech service; WHISPER = a downloaded Whisper model run by the app; PC = the Whisper server on the user's PC. */
     val engine: Engine = Engine.ANDROID,
     val whisperModel: String = ModelCatalog.RECOMMENDED,
