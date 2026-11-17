@@ -61,6 +61,7 @@ import com.hugocodings.voicetyper.core.Style
 import com.hugocodings.voicetyper.core.VoiceCommands
 import com.hugocodings.voicetyper.core.Text as CoreText
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private val Green = Color(0xFF22C55E)
 private val PRESET_COLORS = listOf(0xFF22C55E, 0xFF3B82F6, 0xFFF59E0B, 0xFFA855F7, 0xFFEC4899, 0xFF14B8A6, 0xFF6B7280)
@@ -646,6 +647,13 @@ private fun BubbleCard(s: Settings) {
         Text("Taille : ${s.bubbleSizeDp} dp", style = MaterialTheme.typography.labelLarge)
         Slider(s.bubbleSizeDp.toFloat(), { v -> update { it.copy(bubbleSizeDp = v.toInt()) } }, valueRange = 40f..80f, steps = 7)
         SwitchRow("Toucher pour arrêter (sinon arrêt au silence)", s.tapToStop) { v -> update { it.copy(tapToStop = v) } }
+        if (!s.tapToStop) {
+            Text("Pause avant l'arrêt : ${"%.1f".format(s.silencePauseMs / 1000f)} s", style = MaterialTheme.typography.labelLarge)
+            Slider(s.silencePauseMs / 1000f, { v -> update { it.copy(silencePauseMs = (v * 2).roundToInt() * 500) } },
+                valueRange = 1f..6f, steps = 9)
+            Text("Le micro s'arrête quand vous vous taisez aussi longtemps. Il se coupe pendant que vous parlez ? " +
+                "Allongez la pause.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         SwitchRow("Hors ligne seulement (recommandé)", s.offlineOnly) { v -> update { it.copy(offlineOnly = v) } }
         SwitchRow("Espace après chaque dictée", s.trailingSpace) { v -> update { it.copy(trailingSpace = v) } }
         Text("Où va le texte dicté", style = MaterialTheme.typography.labelLarge)

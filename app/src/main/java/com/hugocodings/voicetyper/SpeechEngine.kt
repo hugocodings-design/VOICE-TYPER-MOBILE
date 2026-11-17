@@ -48,7 +48,10 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
     var maxRms = -100f
         private set
 
-    fun start(lang: Lang?, offlineOnly: Boolean, continuous: Boolean) {
+    private var pauseMs = 2500
+
+    fun start(lang: Lang?, offlineOnly: Boolean, continuous: Boolean, pauseMs: Int = 2500) {
+        this.pauseMs = pauseMs
         cancel()
         this.continuous = continuous
         this.offlineOnly = offlineOnly
@@ -104,6 +107,10 @@ class SpeechEngine(private val context: Context, private val listener: Listener)
                 // honoured by some recognizers only; the restart loop covers the others
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
+            } else {
+                // stop on silence: ask for the user's pause length (some recognizers keep their own, shorter one)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, pauseMs.toLong())
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, pauseMs.toLong())
             }
             if (Build.VERSION.SDK_INT >= 33) putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY)
         }

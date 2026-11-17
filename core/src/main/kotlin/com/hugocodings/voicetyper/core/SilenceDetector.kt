@@ -2,36 +2,43 @@ package com.hugocodings.voicetyper.core
 
 /**
  * Automatic stop when tap-to-stop is off. Fed one level every [stepMs] (bubble scale ≈ -2…10, 1 unit ≈ 4 dB).
- * The silence threshold follows the room: the noise floor drops at once to any quieter level and rises slowly,
- * so office / car noise above a fixed threshold no longer keeps the microphone open forever.
- * Speech = ≥ 3 units (~12 dB) above the floor. Stops after [quietAfterSpeechMs] of non-speech once speech was heard,
- * or after [noSpeechMs] if nothing was ever said.
+ * The threshold follows the room: the noise floor drops at once to any quieter level and rises slowly, but only
+ * on quiet frames (never while you talk), so office / car noise does not keep the mic open and a soft voice does
+ * not close it. Speech starts ≥ 2 units (~8 dB) above the floor and, once talking, continues down to 1 unit (~4 dB)
+ * above it, so soft syllables and word endings count as speech. Stops after [pauseMs] without speech once speech
+ * was heard, or after [noSpeechMs] if nothing was ever said.
  */
 class SilenceDetector(
     private val stepMs: Int = 100,
-    private val quietAfterSpeechMs: Int = 1600,
-    private val noSpeechMs: Int = 10_000,
+    private val pauseMs: Int = DEFAULT_PAUSE_MS,
+    private val noSpeechMs: Int = 15_000,
 ) {
     private var floor = Float.NaN
     private var spoke = false
+    private var talking = false
     private var quietMs = 0
     private var elapsedMs = 0
 
     /** True when the recording should stop now. */
     fun feed(level: Float): Boolean {
         elapsedMs += stepMs
-        floor = when {
-            floor.isNaN() || level < floor -> level
-            else -> floor + RISE_PER_STEP
+        if (floor.isNaN() || level < floor) floor = level
+        val threshold = floor + if (talking) KEEP_ABOVE_FLOOR else START_ABOVE_FLOOR
+        talking = level > maxOf(threshold, MIN_SPEECH_LEVEL)
+        if (talking) {
+            spoke = true; quietMs = 0
+        } else {
+            quietMs += stepMs
+            floor += RISE_PER_STEP // only on non-speech frames
         }
-        val speech = level > maxOf(floor + SPEECH_ABOVE_FLOOR, MIN_SPEECH_LEVEL)
-        if (speech) { spoke = true; quietMs = 0 } else quietMs += stepMs
-        return if (spoke) quietMs >= quietAfterSpeechMs else elapsedMs >= noSpeechMs
+        return if (spoke) quietMs >= pauseMs else elapsedMs >= noSpeechMs
     }
 
     companion object {
-        private const val SPEECH_ABOVE_FLOOR = 3f
-        private const val MIN_SPEECH_LEVEL = 1f
-        private const val RISE_PER_STEP = 0.02f // 0.2 unit per second
+        const val DEFAULT_PAUSE_MS = 2500
+        private const val START_ABOVE_FLOOR = 2f
+        private const val KEEP_ABOVE_FLOOR = 1f
+        private const val MIN_SPEECH_LEVEL = 0f
+        private const val RISE_PER_STEP = 0.01f // 0.1 unit per second of quiet
     }
 }

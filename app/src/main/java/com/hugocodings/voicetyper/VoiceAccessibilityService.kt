@@ -286,8 +286,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         // Android hands silence to a background app that opens it too early
         val start = Runnable {
             pendingStart = null
-            if (usePc || model != null) { capturing = true; capture.start(stopOnSilence = !s.tapToStop) }
-            else speech.start(lang, s.offlineOnly, s.tapToStop)
+            if (usePc || model != null) { capturing = true; capture.start(stopOnSilence = !s.tapToStop, pauseMs = s.silencePauseMs) }
+            else speech.start(lang, s.offlineOnly, s.tapToStop, s.silencePauseMs)
         }
         pendingStart = start
         main.postDelayed(start, 400)
@@ -303,7 +303,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val model = downloadedWhisperFallback() ?: return false
         dictationModel = model
         capturing = true
-        capture.start(stopOnSilence = !settings.tapToStop)
+        capture.start(stopOnSilence = !settings.tapToStop, pauseMs = settings.silencePauseMs)
         overlay.bubble.state = BubbleView.State.LISTENING
         overlay.showCaption("« $langTag » non installé hors ligne : Whisper ${model.name} à la place — parlez…")
         return true

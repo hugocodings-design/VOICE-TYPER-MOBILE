@@ -58,6 +58,8 @@ data class Settings(
     val haptics: Boolean = true,
     /** Tap = start, tap = stop (true) or stop automatically on silence (false). */
     val tapToStop: Boolean = true,
+    /** Tap-to-stop off: how long a pause ends the dictation (ms). */
+    val silencePauseMs: Int = SilenceDetector.DEFAULT_PAUSE_MS,
 ) {
     fun preset(id: String?): Preset? = presets.firstOrNull { it.id == id }
 

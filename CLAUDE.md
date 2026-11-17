@@ -48,7 +48,9 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
   - `Settings.output` (Bulle card): FIELD, FIELD_AND_CLIPBOARD or CLIPBOARD — a plain, non-sensitive clip so « Lien avec
     Windows » syncs it to the PC. No field (bubble « Toujours ») → the dictation still runs and goes to the clipboard.
     The reply card's dictation always lands in its field. Silence stop (tap-to-stop off, Whisper/PC capture):
-    core `SilenceDetector`, adaptive noise floor (speech ≥ 3 units above it; stop 1.6 s after speech, 10 s if none)
+    core `SilenceDetector`, adaptive noise floor that rises only on quiet frames (speech starts 2 units above it, continues
+    down to 1); stop after `Settings.silencePauseMs` (Bulle slider 1–6 s, default 2.5 s) without speech, 15 s if none.
+    The Android recognizer gets the same pause as its silence extras when not continuous
   - Whisper path (`Settings.engine == WHISPER` + downloaded model, else falls back to Android recognition):
     `app/src/main/cpp` (whisper.cpp v1.9.5 via CMake FetchContent, `whisper_jni.cpp`). arm64-v8a: shared libs with
     `GGML_BACKEND_DL` + `GGML_CPU_ALL_VARIANTS` → one `libggml-cpu-android_armv*.so` per ARM generation; `WhisperNative.

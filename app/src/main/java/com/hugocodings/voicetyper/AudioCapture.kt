@@ -32,7 +32,7 @@ class AudioCapture(private val listener: Listener) {
         private set
 
     @SuppressLint("MissingPermission") // checked by the caller
-    fun start(stopOnSilence: Boolean) {
+    fun start(stopOnSilence: Boolean, pauseMs: Int = SilenceDetector.DEFAULT_PAUSE_MS) {
         stop()
         samples = FloatArray(RATE * 30)
         count = 0
@@ -48,13 +48,13 @@ class AudioCapture(private val listener: Listener) {
             return
         }
         running = true
-        thread = Thread({ loop(rec, stopOnSilence) }, "voice-capture").apply { start() }
+        thread = Thread({ loop(rec, stopOnSilence, pauseMs) }, "voice-capture").apply { start() }
         DiagnosticLog.add("Capture micro démarrée (Whisper)")
     }
 
-    private fun loop(rec: AudioRecord, stopOnSilence: Boolean) {
+    private fun loop(rec: AudioRecord, stopOnSilence: Boolean, pauseMs: Int) {
         val buf = ShortArray(RATE / 10) // 100 ms
-        val silence = SilenceDetector(stepMs = 100)
+        val silence = SilenceDetector(stepMs = 100, pauseMs = pauseMs)
         try {
             rec.startRecording()
             while (running) {

@@ -375,27 +375,37 @@ class PcBoostSettingsTest {
 }
 
 class SilenceDetectorTest {
-    private fun run(levels: List<Float>): Int? {
-        val d = SilenceDetector(stepMs = 100)
+    private fun run(levels: List<Float>, pauseMs: Int = 2500): Int? {
+        val d = SilenceDetector(stepMs = 100, pauseMs = pauseMs)
         levels.forEachIndexed { i, l -> if (d.feed(l)) return i }
         return null
     }
 
+    @Test fun softVoiceKeepsListening() {
+        // quiet room at 0, soft voice only 2.5-3.5 units above it, with short dips between words, for 20 s
+        val soft = (1..40).flatMap { listOf(3f, 3.5f, 2.5f, 3f, 1.5f) }
+        assertEquals(null, run(List(10) { 0f } + soft))
+    }
+
+    @Test fun longSentencePausesUnderPauseLengthDoNotStop() {
+        val talk = (1..10).flatMap { List(20) { 6f } + List(18) { 0.5f } } // 1.8 s pauses < 2.5 s
+        assertEquals(null, run(List(5) { 0f } + talk))
+    }
+
     @Test fun stopsInNoisyRoomAfterSpeech() {
-        // office noise at level 5 (above the old fixed threshold 3), speech at 9-10, then back to noise
         val noise = List(10) { 5f }
-        val speech = List(20) { if (it % 3 == 0) 9f else 10f }
-        val stopAt = run(noise + speech + List(30) { 5f + (it % 2) * 0.5f })
-        assertTrue(stopAt != null && stopAt in 45..50, "stopAt=$stopAt")
+        val speech = List(20) { if (it % 3 == 0) 8f else 9f }
+        val stopAt = run(noise + speech + List(40) { 5f + (it % 2) * 0.5f })!!
+        assertTrue(stopAt in 52..56, "stopAt=$stopAt") // ~2.5 s after the last word
     }
 
-    @Test fun keepsListeningWhileTalkingWithShortPauses() {
-        val talk = (1..8).flatMap { List(15) { 9f } + List(8) { 2f } } // 0.8 s pauses
-        assertEquals(null, run(List(5) { 2f } + talk))
+    @Test fun pauseLengthIsConfigurable() {
+        val levels = List(5) { 0f } + List(10) { 6f } + List(60) { 0f }
+        assertEquals(24, run(levels, pauseMs = 1000))
+        assertEquals(54, run(levels, pauseMs = 4000))
     }
 
-    @Test fun quietRoomAndNoSpeechTimeout() {
-        assertTrue(run(List(5) { 0f } + List(10) { 8f } + List(20) { 0f })!! in 29..31)
-        assertEquals(99, run(List(150) { 0f })) // nothing said: stops after 10 s
+    @Test fun nothingSaidStopsAfter15s() {
+        assertEquals(149, run(List(200) { 0f }))
     }
 }
