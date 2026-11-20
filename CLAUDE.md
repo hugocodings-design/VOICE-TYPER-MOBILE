@@ -19,7 +19,11 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     closing/signature — default « Merci, » only if neither the dictation nor the signature has a closing — MESSAGE, NOTES, CLEAN, RAW).
     Courriel language = `guessLang` of the text, else of the client email, else the dictation language; it picks greeting,
     closing and `Settings.signatureFor` (`signatureEn` for English if set, else `signature`). No LLM yet (roadmap: on-device LLM like desktop Qwen)
-  - `Pipeline.kt` — raw → commands → dictionary → fillers → style → prefix/suffix (+ trailing space)
+  - `Pipeline.kt` — raw → numbers → commands → dictionary → fillers → style → prefix/suffix (+ trailing space)
+  - `Numerals.kt` — port of desktop `numerals.py` (0.18, same tests): numbers said in words → digits, « virgule »/"point"
+    decimals, « pour cent »/"percent" → %; keeps un/une/one, mille, zéro alone, « neuf » = new, hyphenated words.
+    `Settings.numbersAsDigits` (on), applied with the declared language (null = FR+EN) before voice commands.
+    `Settings.signatureBlankLine` (desktop `signature_blank_line`): empty line between closing and signature
   - `EmailSubject.kt` — Courriel presets (`Preset.emailSubject`, on by default): rule-based subject (skips greeting,
     small talk, « je vous écris pour… », ≤ 8 words) → `Pipeline.Result.subject`/`subjectLine`. The service fills the app's
     empty subject field (view id/hint « subject »/« objet »), else puts « Objet : … » first in an empty body; dictating in

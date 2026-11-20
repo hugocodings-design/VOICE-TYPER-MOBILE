@@ -409,3 +409,91 @@ class SilenceDetectorTest {
         assertEquals(149, run(List(200) { 0f }))
     }
 }
+
+/** Same cases as desktop Voice Typer tests/test_numerals.py. */
+class NumeralsTest {
+    private val NB = " "
+    private fun fr(s: String) = Numerals.toDigits(s, Lang.FR)
+    private fun en(s: String) = Numerals.toDigits(s, Lang.EN)
+
+    @Test fun frenchNumbers() {
+        val cases = listOf(
+            "J'ai vingt-cinq ans" to "J'ai 25 ans",
+            "Il y a quatre-vingt-dix-sept personnes" to "Il y a 97 personnes",
+            "soixante et onze euros" to "71 euros",
+            "vingt et un jours" to "21 jours",
+            "trente-et-un" to "31",
+            "septante-sept" to "77",
+            "quatre-vingts" to "80",
+            "dix-sept heures trente" to "17 heures 30",
+            "deux mille vingt-quatre" to "2024",
+            "douze mille cinq cents" to "12${NB}500",
+            "un million deux cent mille" to "1${NB}200${NB}000",
+            "deux millions de dollars" to "2 millions de dollars",
+            "Deux personnes" to "2 personnes",
+            "vingt-quatre heures sur vingt-quatre" to "24 heures sur 24",
+            "Il a cent ans" to "Il a 100 ans",
+        )
+        for ((said, written) in cases) assertEquals(written, fr(said), said)
+    }
+
+    @Test fun decimalsAndPercent() {
+        assertEquals("3,5$NB%", fr("trois virgule cinq pour cent"))
+        assertEquals("50$NB%", fr("cinquante pour cent"))
+        assertEquals("100$NB%", fr("cent pour cent"))
+        assertEquals("1,2", fr("un virgule deux"))
+        assertEquals("3.5%", en("three point five percent"))
+    }
+
+    @Test fun wordsThatAreNotNumbersStay() {
+        assertEquals("un rendez-vous à 9 heures", fr("un rendez-vous à neuf heures"))
+        assertEquals("une pomme et une poire", fr("une pomme et une poire"))
+        assertEquals("un vélo neuf.", fr("un vélo neuf."))
+        assertEquals("un vélo neuf et rapide", fr("un vélo neuf et rapide"))
+        assertEquals("mille mercis", fr("mille mercis"))
+        assertEquals("repartir à zéro", fr("repartir à zéro"))
+        assertEquals("les deux-roues et trois-quarts", fr("les deux-roues et trois-quarts"))
+        assertEquals("one of them has 21 cats", en("one of them has twenty-one cats"))
+        assertEquals("il en reste 2 un peu plus loin", fr("il en reste deux un peu plus loin"))
+    }
+
+    @Test fun sequencesStaySeparate() {
+        assertEquals("1 2 3", fr("un deux trois"))
+        assertEquals("0 6 12", fr("zéro six douze"))
+    }
+
+    @Test fun english() {
+        assertEquals("105", en("a hundred and five"))
+        assertEquals("2005", en("two thousand and five"))
+        assertEquals("12,500", en("twelve thousand five hundred"))
+        assertEquals("1984", en("nineteen eighty-four"))
+        assertEquals("2024", en("twenty twenty-four"))
+        assertEquals("50 cents", en("fifty cents"))
+    }
+
+    @Test fun autoLanguageMixesBoth() {
+        assertEquals("50 cents", Numerals.toDigits("fifty cents", null))
+        assertEquals("200 personnes", Numerals.toDigits("deux cents personnes", null))
+        assertEquals("22 and 22", Numerals.toDigits("vingt-deux and twenty-two", null))
+    }
+
+    @Test fun digitsAlreadyWrittenAreUntouched() {
+        assertEquals("Rendez-vous le 12 à 14 h 30, 3,5 %", fr("Rendez-vous le 12 à 14 h 30, 3,5 %"))
+    }
+}
+
+class FromDesktop018Test {
+    @Test fun numbersInPipelineBeforeVoiceCommands() {
+        val s = Settings()
+        val out = Pipeline.process("le taux est de trois virgule cinq pour cent pour vingt-deux clients", s.preset("normal")!!, s).text
+        assertEquals("Le taux est de 3,5\u00a0% pour 22 clients. ", out)
+        val off = s.copy(numbersAsDigits = false)
+        assertTrue("vingt-deux" in Pipeline.process("vingt-deux clients", off.preset("raw")!!, off).text.lowercase())
+    }
+
+    @Test fun blankLineBeforeSignature() {
+        assertTrue(Styles.email("bonjour Marc le contrat est signé", Lang.FR, "Hugo", blankLineBeforeSignature = true)
+            .endsWith("Merci,\n\nHugo"))
+        assertTrue(Styles.email("bonjour Marc le contrat est signé", Lang.FR, "Hugo").endsWith("Merci,\nHugo"))
+    }
+}

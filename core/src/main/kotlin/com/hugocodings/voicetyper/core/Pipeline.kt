@@ -33,6 +33,8 @@ object Pipeline {
         if (VoiceCommands.isUndo(text, declared)) return Result("", undo = true)
         val lang = declared ?: guessLang(text)
         var t = text
+        // before voice commands, like desktop: « trois virgule cinq » → « 3,5 », not « 3, 5 »
+        if (settings.numbersAsDigits) t = Numerals.toDigits(t, declared)
         if (preset.voiceCommands) t = VoiceCommands.apply(t, lang)
         t = Dictionary.apply(t, Dictionary.forApp(settings.replacements, settings.appDictionaries, app))
         val client = if (useClient) settings.client(lang) else null
@@ -45,7 +47,7 @@ object Pipeline {
             guessLang(t, client?.let { guessLang(settings.clientContext, lang) } ?: lang)
         } else lang
         val subject = if (preset.style == Style.EMAIL && preset.emailSubject) client?.replySubject ?: EmailSubject.generate(t, mailLang) else null
-        t = Styles.apply(preset.style, t, mailLang, settings.signatureFor(mailLang), client?.firstName)
+        t = Styles.apply(preset.style, t, mailLang, settings.signatureFor(mailLang), client?.firstName, settings.signatureBlankLine)
         t = preset.prefix + t + preset.suffix
         if (settings.trailingSpace && preset.style !in setOf(Style.EMAIL, Style.NOTES) && !t.endsWith("\n")) t += " "
         return Result(t, subject = subject, subjectLine = subject?.let { EmailSubject.line(it, mailLang) })

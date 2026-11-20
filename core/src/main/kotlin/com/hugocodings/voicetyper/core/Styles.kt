@@ -3,11 +3,12 @@ package com.hugocodings.voicetyper.core
 /** The text shaping of each [Style]. Input already has voice commands, dictionary and fillers applied. */
 object Styles {
 
-    fun apply(style: Style, text: String, lang: Lang, signature: String, greetName: String? = null): String = when (style) {
+    fun apply(style: Style, text: String, lang: Lang, signature: String, greetName: String? = null,
+              blankLineBeforeSignature: Boolean = false): String = when (style) {
         Style.RAW -> Text.capitalizeFirst(text)
         Style.CLEAN -> Text.ensureFinalPeriod(Text.capitalizeSentences(Text.capitalizeFirst(text)))
         Style.MESSAGE -> message(text)
-        Style.EMAIL -> email(text, lang, signature, greetName)
+        Style.EMAIL -> email(text, lang, signature, greetName, blankLineBeforeSignature)
         Style.NOTES -> notes(text)
     }
 
@@ -81,7 +82,8 @@ object Styles {
             CLOSINGS.values.flatten().any { c -> line == c || line.startsWith("$c ") || line.startsWith("$c,") || line.startsWith("$c.") || line.startsWith("$c!") }
         }
 
-    fun email(text: String, lang: Lang, signature: String, greetName: String? = null): String {
+    fun email(text: String, lang: Lang, signature: String, greetName: String? = null,
+              blankLineBeforeSignature: Boolean = false): String {
         val greeting = splitGreeting(text, lang)
         val hello = if (lang == Lang.FR) "Bonjour" else "Hello"
         val greetLine = greeting?.line ?: if (greetName.isNullOrBlank()) "$hello," else "$hello $greetName,"
@@ -99,7 +101,7 @@ object Styles {
             if (paragraphs.isNotEmpty()) append(paragraphs).append("\n\n")
             if (close != null) append(close)
             if (signature.isNotBlank()) {
-                if (close != null) append("\n")
+                if (close != null) append(if (blankLineBeforeSignature) "\n\n" else "\n")
                 append(signature.trim())
             }
         }.trimEnd()

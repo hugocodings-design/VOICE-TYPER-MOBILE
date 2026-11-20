@@ -630,6 +630,9 @@ private fun SignatureCard(s: Settings) {
             label = { Text("Signature en français") }, placeholder = { Text("Hugo\n514 555-0123") }, minLines = 2)
         OutlinedTextField(textEn, { textEn = it; update { st -> st.copy(signatureEn = it) } }, Modifier.fillMaxWidth(),
             label = { Text("Signature en anglais") }, placeholder = { Text("Hugo\nCall me at 514 555-0123") }, minLines = 2)
+        SwitchRow("Laisser une ligne vide entre la formule de politesse et la signature", s.signatureBlankLine) { v ->
+            update { it.copy(signatureBlankLine = v) }
+        }
     }
 }
 
@@ -656,6 +659,9 @@ private fun BubbleCard(s: Settings) {
         }
         SwitchRow("Hors ligne seulement (recommandé)", s.offlineOnly) { v -> update { it.copy(offlineOnly = v) } }
         SwitchRow("Espace après chaque dictée", s.trailingSpace) { v -> update { it.copy(trailingSpace = v) } }
+        SwitchRow("Nombres en chiffres (« vingt-cinq » → 25, « trois virgule cinq pour cent » → 3,5 %)", s.numbersAsDigits) { v ->
+            update { it.copy(numbersAsDigits = v) }
+        }
         Text("Où va le texte dicté", style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Output.entries.forEach { o ->

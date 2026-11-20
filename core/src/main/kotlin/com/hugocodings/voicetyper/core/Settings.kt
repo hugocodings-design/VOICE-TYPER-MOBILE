@@ -34,6 +34,10 @@ data class Settings(
     val signature: String = "",
     /** English email signature, picked when the email is in English. */
     val signatureEn: String = "",
+    /** Empty line between the closing (« Merci, ») and the signature (desktop `signature_blank_line`). */
+    val signatureBlankLine: Boolean = false,
+    /** « vingt-cinq » → 25, « trois virgule cinq pour cent » → 3,5 % (desktop `numbers_as_digits`). */
+    val numbersAsDigits: Boolean = true,
     /** Pasted client email (« Réponse à un client »): its names/terms are used by Courriel dictations while not empty. */
     val clientContext: String = "",
     /** Terms of the client email the user removed (wrongly detected). */
