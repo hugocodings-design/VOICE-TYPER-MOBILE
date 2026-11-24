@@ -53,6 +53,9 @@ data class Settings(
     val whisperModel: String = ModelCatalog.RECOMMENDED,
     /** Tailscale name of the user's PC ("mon-pc.tailXXXX.ts.net", optional ":port", default 8766). */
     val pcAddress: String = "",
+    /** Key of Voice Typer Home (desktop app): set → the PC is reached through Tailscale Funnel (`https://…ts.net`), no
+     *  Tailscale on the phone ([HomePc]); empty → older FLASH LINGO server through Tailscale. */
+    val pcKey: String = "",
     /** Only use the on-device recognizer (nothing leaves the phone). */
     val offlineOnly: Boolean = true,
     val haptics: Boolean = true,

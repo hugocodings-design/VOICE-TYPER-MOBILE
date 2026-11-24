@@ -399,3 +399,39 @@ class SilenceDetectorTest {
         assertEquals(99, run(List(150) { 0f })) // nothing said: stops after 10 s
     }
 }
+
+class HomePcTest {
+    @Test fun funnelAddressIsHttpsOnly() {
+        assertEquals("https://hugo.tail3001ff.ts.net", HomePc.baseUrl("hugo.tail3001ff.ts.net"))
+        assertEquals("https://hugo.tail3001ff.ts.net", HomePc.baseUrl(" https://hugo.tail3001ff.ts.net/ "))
+        assertEquals(null, HomePc.baseUrl("http://hugo.tail3001ff.ts.net"))
+        assertEquals(null, HomePc.baseUrl("hugo.ts.net/evil"))
+    }
+
+    @Test fun keyChoosesVoiceTyperHome() {
+        assertTrue(HomePc.usesHome("hugo.tail3001ff.ts.net", "abc"))
+        assertFalse(HomePc.usesHome("hugo.tail3001ff.ts.net", " ".trim()))
+        val back = Settings.decode(Settings.encode(Settings(engine = Engine.PC, pcAddress = "a.ts.net", pcKey = "k")))
+        assertEquals("k", back.pcKey)
+        assertEquals("", Settings.decode("""{"engine":"PC","pcAddress":"a.ts.net"}""").pcKey)
+    }
+
+    @Test fun audioIsZlibCompressed16BitPcm() {
+        val pcm = FloatArray(16000) { i -> if (i % 2 == 0) 0.5f else -0.5f }
+        val packed = HomePc.encodeAudio(pcm)
+        val inflater = java.util.zip.Inflater()
+        inflater.setInput(packed)
+        val raw = ByteArray(pcm.size * 2)
+        assertEquals(raw.size, inflater.inflate(raw))
+        val bb = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        assertEquals(16383, bb.getShort(0).toInt())
+        assertEquals(-16383, bb.getShort(2).toInt())
+        assertTrue(packed.size < raw.size / 10)
+    }
+
+    @Test fun optionsHeader() {
+        assertEquals("""{"language":"fr","hotwords":"Gagnon, \"CSP\"","mode":"auto","sample_rate":16000}""",
+            HomePc.options("fr", "Gagnon, \"CSP\""))
+        assertEquals("""{"language":null,"hotwords":null,"mode":"auto","sample_rate":16000}""", HomePc.options("auto", " "))
+    }
+}

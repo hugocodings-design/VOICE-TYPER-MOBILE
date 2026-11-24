@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import com.hugocodings.voicetyper.core.BubbleMode
 import com.hugocodings.voicetyper.core.Dictionary
 import com.hugocodings.voicetyper.core.Engine
+import com.hugocodings.voicetyper.core.HomePc
 import com.hugocodings.voicetyper.core.Output
 import com.hugocodings.voicetyper.core.ModelCatalog
 import com.hugocodings.voicetyper.core.Settings
@@ -140,7 +141,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         main.removeCallbacks(hideLater)
         if (show) {
             if (s.engine == Engine.PC && s.pcAddress.isNotBlank() && !busy) {
-                scope.launch { PcHealth.warmUp(this@VoiceAccessibilityService, s.pcAddress) }
+                scope.launch { PcHealth.warmUp(this@VoiceAccessibilityService, s.pcAddress, s.pcKey) }
             }
             overlay.showBubble(s.bubbleSizeDp, s.bubbleX, s.bubbleY)
             if (!busy) overlay.bubble.label = languageBadge()
@@ -260,8 +261,9 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val pcChosen = s.engine == Engine.PC && s.pcAddress.isNotBlank()
         // PC known unreachable (Tailscale off, or the last check failed): don't record for it and wait for a timeout,
         // use the phone's real-time recognition now (Whisper takes over there if the language pack is missing)
-        val pcDown = pcChosen && (!PcEngine.tailscaleUp(this) || PcHealth.knownDown())
-        if (pcChosen) scope.launch { PcHealth.warmUp(this@VoiceAccessibilityService, s.pcAddress, force = pcDown) }
+        val viaFunnel = HomePc.usesHome(s.pcAddress, s.pcKey)   // Voice Typer Home: no Tailscale on the phone
+        val pcDown = pcChosen && ((!viaFunnel && !PcEngine.tailscaleUp(this)) || PcHealth.knownDown())
+        if (pcChosen) scope.launch { PcHealth.warmUp(this@VoiceAccessibilityService, s.pcAddress, s.pcKey, force = pcDown) }
         val usePc = pcChosen && !pcDown
         if (pcDown) DiagnosticLog.add("PC injoignable (${PcHealth.lastError ?: "Tailscale désactivé"}) : reconnaissance du téléphone")
         dictationPc = usePc
@@ -372,10 +374,10 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             val text = try {
                 if (pc) {
                     try {
-                        if (!PcEngine.tailscaleUp(this@VoiceAccessibilityService)) {
+                        if (!HomePc.usesHome(s.pcAddress, s.pcKey) && !PcEngine.tailscaleUp(this@VoiceAccessibilityService)) {
                             throw java.io.IOException("Tailscale désactivé sur le téléphone")
                         }
-                        timed("PC") { PcEngine.transcribe(s.pcAddress, pcm, lang) }
+                        timed("PC") { PcEngine.transcribe(s.pcAddress, pcm, lang, s.pcKey, prompt) }
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: Exception) {
