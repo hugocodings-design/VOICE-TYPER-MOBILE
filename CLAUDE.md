@@ -5,7 +5,7 @@ The Android counterpart of Voice Typer (Windows, repo `hugocodings-design/Voice-
 bubble over every app; tap → dictate → text is formatted by the app's preset and written into the focused
 field. **Local only**: on-device recognition; INTERNET is used only to download Whisper models from Hugging
 Face (audio/text never leave the phone). UI texts are in French.
-Exception, opt-in: engine « PC (boosté) » sends the audio to the user's own PC: Voice Typer Home through Tailscale Funnel (HTTPS + key, 0.9.0), or the older Whisper server through Tailscale.
+Exception, opt-in: engine « PC (boosté) » sends the audio to the user's own PC: Home Connections through Tailscale Funnel (HTTPS + key; 0.10.0).
 Android only: iOS forbids overlays and writing into other apps (a custom keyboard would be the iOS route).
 
 ## Layout
@@ -61,25 +61,20 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     (16 kHz AudioRecord, levels, silence auto-stop), `ModelManager` (download to filesDir/models, `.part` then rename).
     Silence (max level < 1) is never sent to Whisper; `Text.stripWhisperHallucinations` cleans the output;
     `Dictionary.whisperPrompt` = replacement targets as initial prompt. Catalog in core `Models.kt`
-  - PC path (`Settings.engine == PC` + `pcAddress` = the PC's Tailscale name `<pc>.<tailnet>.ts.net`): records with
-    `AudioCapture`, `PcEngine` POSTs a 16 kHz mono 16-bit WAV to `http://<name>:8766/transcribe?lang=fr|en` → `{"text"}`
-    (`GET /health` for the connection test). The server is **FLASH LINGO's** `tools/whisper_server.py` (bound to
-    127.0.0.1, exposed only by `tailscale serve --http 8766`, which answers 404 on the 100.x IP: use the name). No app-level
-    auth: Tailscale is the access control and encryption. Max 1 min of audio (server limit) → longer dictations and any
-    failure → Whisper on the phone (`downloadedWhisperFallback`) if a model is downloaded, else the error. Cleartext allowed
-    (`network_security_config`). No VPN transport (`PcEngine.tailscaleUp`, ACCESS_NETWORK_STATE) → straight to the phone,
-    no timeout; an instant connect failure (network switch) is retried once, a connect timeout is not. `PcHealth`: a throttled
-    (25 s) background `/health` whenever the bubble shows warms the tunnel; if the last check failed < 90 s ago (or no VPN)
-    the dictation uses Android real-time recognition right away instead of recording for the PC. A failed PC request
-    falls back to the fastest downloaded model (base > tiny > small > turbo). Results go to the PC card's history. Do not add a server to this repo or to desktop Voice Typer (that app must never open a
-    network port: IT requirement, work PC); one shared PC server serves FLASH LINGO and this app
-  - Voice Typer Home mode (0.9.0, `Settings.pcKey` set): core `HomePc` = desktop `home_server` protocol — `https://<pc>.
-    <tailnet>.ts.net` (Funnel, public HTTPS, no Tailscale app needed on the phone), `Authorization: Bearer <key>`,
-    `GET /v1/ping` → {"whisper","device"}, `POST /v1/transcribe` body = zlib int16 PCM, header `X-VT-Options`
-    (language, hotwords = Whisper prompt, mode auto) → {"text"}; 5 min max; statuses → `HomePc.describeStatus` (401 key,
-    503 model loading…). `PcEngine` picks the mode per request (`HomePc.usesHome`); the VPN check is skipped in this mode.
-    The home PC runs the phone's request with the Whisper model chosen on the home PC (no `model` sent: the phone's
-    whisper.cpp names are not desktop names)
+  - PC path (`Settings.engine == PC` + `pcAddress` + `pcKey`, 0.10.0): core `HomePc` = **Home Connections** (repo
+    `Home-Connections`, the home PC's one front door for every app; it replaced Voice Typer Home at the same address and
+    key) — `https://<pc>.<tailnet>.ts.net` (Funnel, public HTTPS, no Tailscale app needed on the phone),
+    `Authorization: Bearer <key>`, `X-App: voicetyper-mobile`; `GET /v1/ping` → {"whisper","device","services"},
+    `POST /v1/wake` `{"models":["whisper"]}` when a PC recording starts (Home Connections puts Whisper to sleep),
+    `POST /v1/transcribe` body = zlib int16 PCM, header `X-VT-Options` (language, hotwords = Whisper prompt, mode auto)
+    → {"text"}; 5 min max; statuses → `HomePc.describeStatus` (401 key, 503 Whisper still loading → phone). The home PC
+    uses its own Whisper model (no `model` sent: the phone's whisper.cpp names are not desktop names). Address AND key
+    are required (HTTPS only, no cleartext): the older key-less FLASH LINGO Whisper server through Tailscale (port 8766)
+    is retired. `PcHealth`: a throttled (25 s) background `/v1/ping` whenever the bubble shows; if the last check failed
+    < 90 s ago the dictation uses Android real-time recognition right away instead of recording for the PC. An instant
+    connect failure (network switch) is retried once, a connect timeout is not. A failed PC request falls back to the
+    fastest downloaded model (base > tiny > small > turbo). Results go to the PC card's history. Do not add a server to
+    this repo or to desktop Voice Typer (that app must never open a network port: IT requirement, work PC)
   - `MicService` — foreground service type microphone while dictating (best effort); the recognizer starts 400 ms later
   - `SettingsRepository` — StateFlow shared by service and activity (same process), SharedPreferences JSON
   - `DiagnosticLog` — in-memory event log (never dictated text) shown/copied in the Diagnostic card (raw AudioRecord peak test + recognizer test)

@@ -20,9 +20,8 @@ mis en forme selon le **préréglage de l'application**, puis écrit là où se 
       Le dictionnaire sert d'indice à Whisper (comme les `hotwords` du PC). Internet sert **uniquement** à
       télécharger les modèles ; l'audio et le texte ne quittent jamais le téléphone
 - [x] **PC (boosté)** : votre PC fait la transcription avec sa carte graphique — environ 0,5 s pour 5 s de
-      parole au lieu d'une minute sur le téléphone. Le téléphone passe par **Tailscale** (seuls vos appareils,
-      liaison chiffrée) et utilise le serveur Whisper du PC partagé avec FLASH LINGO. PC injoignable : Whisper sur
-      le téléphone prend le relais
+      parole au lieu d'une minute sur le téléphone. Le téléphone passe par **Home Connections** sur le PC (adresse
+      HTTPS + clé, liaison chiffrée, de partout). PC injoignable : Whisper sur le téléphone prend le relais
 - [x] Ou **reconnaissance Android** sur l'appareil (Android 12+), mode « Hors ligne seulement » par défaut
 - [x] **Préréglages** (comme les préréglages d'écriture du PC) : Normal, Message rapide, Courriel
       (salutation avec le nom dicté, petits paragraphes, formule de politesse, signature), Notes en points,
@@ -40,14 +39,15 @@ mis en forme selon le **préréglage de l'application**, puis écrit là où se 
 - [x] Français par défaut, English ou Auto ; changement rapide : appui long sur la bulle → Langue (badge FR/EN sur la bulle)
 - [x] Android 13+ : une seule session de reconnaissance pendant toute la dictée (pas de mots perdus aux pauses)
 
-## PC (boosté) par Tailscale
+## PC (boosté) par Home Connections
 
-1. Sur le PC : le serveur Whisper de FLASH LINGO (`FLASH LINGO	ools\start_whisper_server.ps1 -Cache`, lancé au
-   démarrage de Windows) et `tailscale serve --bg --http 8766 http://127.0.0.1:8766` (une fois, persistant).
-2. Sur le téléphone : Tailscale activé, puis Voice Typer → Moteur de reconnaissance → **PC (boosté)** → nom Tailscale
-   du PC (`mon-pc.tailXXXX.ts.net`, pas l'adresse 100.…) → « Tester la connexion ».
+1. Sur le PC : **Home Connections** (dépôt `Home-Connections`, démarre avec Windows), la porte d'entrée unique du
+   PC pour toutes les apps, publiée par Tailscale Funnel.
+2. Sur le téléphone : Voice Typer → Moteur de reconnaissance → **PC (boosté)** → adresse
+   (`https://mon-pc.tailXXXX.ts.net`) et clé (fenêtre de Home Connections → onglet Connexion → « Copier » /
+   « Copier la clé ») → « Tester la connexion ». Rien à installer sur le téléphone, marche en Wi-Fi comme en LTE.
 
-Une minute de parole au plus par dictée côté PC (au-delà, Whisper sur le téléphone).
+Cinq minutes de parole au plus par dictée côté PC (au-delà, Whisper sur le téléphone).
 
 ## Feuille de route
 

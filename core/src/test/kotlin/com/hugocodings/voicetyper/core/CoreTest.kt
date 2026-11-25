@@ -408,9 +408,10 @@ class HomePcTest {
         assertEquals(null, HomePc.baseUrl("hugo.ts.net/evil"))
     }
 
-    @Test fun keyChoosesVoiceTyperHome() {
+    @Test fun pcNeedsAddressAndKey() {
         assertTrue(HomePc.usesHome("hugo.tail3001ff.ts.net", "abc"))
         assertFalse(HomePc.usesHome("hugo.tail3001ff.ts.net", " ".trim()))
+        assertFalse(HomePc.usesHome("", "abc"))
         val back = Settings.decode(Settings.encode(Settings(engine = Engine.PC, pcAddress = "a.ts.net", pcKey = "k")))
         assertEquals("k", back.pcKey)
         assertEquals("", Settings.decode("""{"engine":"PC","pcAddress":"a.ts.net"}""").pcKey)
@@ -427,6 +428,13 @@ class HomePcTest {
         assertEquals(16383, bb.getShort(0).toInt())
         assertEquals(-16383, bb.getShort(2).toInt())
         assertTrue(packed.size < raw.size / 10)
+    }
+
+    @Test fun homeConnectionsStandard() {
+        assertEquals("voicetyper-mobile", HomePc.APP)
+        assertEquals("""{"models":["whisper"]}""", HomePc.WAKE_BODY)
+        assertTrue(HomePc.describeStatus(401).contains("Home Connections"))
+        assertTrue(HomePc.describeStatus(503).contains("relais"))
     }
 
     @Test fun optionsHeader() {

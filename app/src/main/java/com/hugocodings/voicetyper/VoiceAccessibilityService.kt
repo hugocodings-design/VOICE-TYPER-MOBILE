@@ -64,7 +64,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
     private var dictationLang: Lang? = null
     /** Whisper model of the current dictation (chosen one, or the fallback when the offline language is missing). */
     private var dictationModel: WhisperModel? = null
-    /** This dictation is transcribed by the Whisper server on the user's PC (via Tailscale). */
+    /** This dictation is transcribed by Whisper on the user's home PC (Home Connections). */
     private var dictationPc = false
     /** Updates the "Transcription… N s" caption while Whisper works. */
     private var transcribeTicker: Job? = null
@@ -140,8 +140,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
 
         main.removeCallbacks(hideLater)
         if (show) {
-            if (s.engine == Engine.PC && s.pcAddress.isNotBlank() && !busy) {
-                scope.launch { PcHealth.warmUp(this@VoiceAccessibilityService, s.pcAddress, s.pcKey) }
+            if (s.engine == Engine.PC && HomePc.usesHome(s.pcAddress, s.pcKey) && !busy) {
+                scope.launch { PcHealth.warmUp(s.pcAddress, s.pcKey) }
             }
             overlay.showBubble(s.bubbleSizeDp, s.bubbleX, s.bubbleY)
             if (!busy) overlay.bubble.label = languageBadge()
@@ -258,14 +258,15 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val s = settings
         val lang = preset.language ?: s.language
         dictationLang = lang
-        val pcChosen = s.engine == Engine.PC && s.pcAddress.isNotBlank()
-        // PC known unreachable (Tailscale off, or the last check failed): don't record for it and wait for a timeout,
+        val pcChosen = s.engine == Engine.PC && HomePc.usesHome(s.pcAddress, s.pcKey)
+        // PC known unreachable (the last check failed): don't record for it and wait for a timeout,
         // use the phone's real-time recognition now (Whisper takes over there if the language pack is missing)
-        val viaFunnel = HomePc.usesHome(s.pcAddress, s.pcKey)   // Voice Typer Home: no Tailscale on the phone
-        val pcDown = pcChosen && ((!viaFunnel && !PcEngine.tailscaleUp(this)) || PcHealth.knownDown())
-        if (pcChosen) scope.launch { PcHealth.warmUp(this@VoiceAccessibilityService, s.pcAddress, s.pcKey, force = pcDown) }
+        val pcDown = pcChosen && PcHealth.knownDown()
+        if (pcChosen) scope.launch { PcHealth.warmUp(s.pcAddress, s.pcKey, force = pcDown) }
         val usePc = pcChosen && !pcDown
-        if (pcDown) DiagnosticLog.add("PC injoignable (${PcHealth.lastError ?: "Tailscale désactivé"}) : reconnaissance du téléphone")
+        // Home Connections puts Whisper to sleep when idle: wake it now, it loads while the user speaks
+        if (usePc) scope.launch { PcEngine.wake(s.pcAddress, s.pcKey) }
+        if (pcDown) DiagnosticLog.add("PC injoignable (${PcHealth.lastError ?: "?"}) : reconnaissance du téléphone")
         dictationPc = usePc
         // PC chosen but not set up yet: say so, and use Whisper on the phone meanwhile (Android recognition otherwise)
         val pcMissing = s.engine == Engine.PC && !usePc
@@ -274,7 +275,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         if (s.engine == Engine.WHISPER && model == null) {
             DiagnosticLog.add("Whisper choisi mais modèle ${s.whisperModel} absent : reconnaissance Android")
         }
-        if (pcMissing) DiagnosticLog.add("PC choisi mais nom du PC manquant : " +
+        if (pcMissing && !pcDown) DiagnosticLog.add("PC choisi mais adresse ou clé manquante : " +
             (model?.let { "Whisper ${it.id} sur le téléphone" } ?: "reconnaissance Android"))
         val engineName = when {
             pcDown -> "PC injoignable : téléphone"
@@ -282,7 +283,7 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             model != null -> "Whisper ${model.name}"
             else -> SpeechEngine.languageTag(lang)
         }
-        overlay.showCaption((if (pcMissing) "PC non configuré (nom du PC dans Voice Typer) · " else "") +
+        overlay.showCaption((if (pcMissing && !pcDown) "PC non configuré (adresse + clé dans Voice Typer) · " else "") +
             "${preset.name} · $note$engineName · ${lang?.tag ?: "auto"} — parlez…")
         // give the microphone foreground service time to be up before the mic is opened:
         // Android hands silence to a background app that opens it too early
@@ -374,9 +375,6 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
             val text = try {
                 if (pc) {
                     try {
-                        if (!HomePc.usesHome(s.pcAddress, s.pcKey) && !PcEngine.tailscaleUp(this@VoiceAccessibilityService)) {
-                            throw java.io.IOException("Tailscale désactivé sur le téléphone")
-                        }
                         timed("PC") { PcEngine.transcribe(s.pcAddress, pcm, lang, s.pcKey, prompt) }
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
