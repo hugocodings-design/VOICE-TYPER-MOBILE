@@ -1,8 +1,5 @@
 package com.hugocodings.voicetyper
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -15,22 +12,11 @@ import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 /**
- * Client of the PC's Whisper server (the one FLASH LINGO uses: `FLASH LINGO/tools/whisper_server.py`), reached
- * through Tailscale (`tailscale serve` on the PC forwards `<pc>.<tailnet>.ts.net:8766` to 127.0.0.1:8766).
- * Tailscale is the access control and the encryption: only the user's own devices are in their tailnet.
- * Protocol: GET /health → {"status","model"}; POST /transcribe?lang=fr|en, body = WAV 16 kHz mono 16-bit → {"text"}.
- *
- * With a key ([HomePc]): Voice Typer Home (desktop) behind Tailscale Funnel — public HTTPS address, key checked by the
- * PC, no Tailscale on the phone. GET /v1/ping, POST /v1/transcribe (zlib PCM), "Authorization: Bearer <key>".
- */
-/**
- * What the app knows about the PC link: a background /health check whenever the bubble shows (throttled) keeps
- * the Tailscale tunnel warm and tells the next dictation whether to record for the PC or use the phone's real-time
- * recognition right away. Every result goes to [history] (shown in the PC card) to find what triggers drops.
+ * What the app knows about the PC link: a background /v1/ping whenever the bubble shows (throttled) tells the next
+ * dictation whether to record for the PC or use the phone's real-time recognition right away. Every result goes to
+ * [history] (shown in the PC card) to find what triggers drops.
  */
 object PcHealth {
     data class Event(val at: Long, val ok: Boolean, val what: String)
@@ -60,15 +46,12 @@ object PcHealth {
     }
 
     /** Background check, at most every [MIN_INTERVAL_MS] (sooner after a failure is not useful either). */
-    suspend fun warmUp(context: Context, address: String, key: String = "", force: Boolean = false) {
+    suspend fun warmUp(address: String, key: String, force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (checking || address.isBlank()) return
+        if (checking || !HomePc.usesHome(address, key)) return
         if (!force && now - maxOf(lastOkAt, lastFailAt) < MIN_INTERVAL_MS) return
         checking = true
         try {
-            if (!HomePc.usesHome(address, key) && !PcEngine.tailscaleUp(context)) {
-                record(false, "Tailscale désactivé sur le téléphone"); return
-            }
             val t0 = System.currentTimeMillis()
             val model = PcEngine.ping(address, key)
             record(true, "PC joignable ($model, ${System.currentTimeMillis() - t0} ms)")
@@ -83,49 +66,54 @@ object PcHealth {
     const val MIN_INTERVAL_MS = 25_000L
 }
 
+/**
+ * Client of Home Connections on the user's home PC ([HomePc]): public HTTPS address (Tailscale Funnel), key checked
+ * by the PC, no Tailscale on the phone. GET /v1/ping, POST /v1/wake, POST /v1/transcribe (zlib PCM).
+ */
 object PcEngine {
-    const val DEFAULT_PORT = 8766
-    /** The server refuses more than one minute of audio (16000 × 2 × 60 bytes, WAV header included). */
-    const val MAX_SECONDS = 59
-
-    /**
-     * True when a VPN (Tailscale) is connected. Without it the PC's .ts.net name cannot be reached, so the
-     * caller goes straight to Whisper on the phone instead of waiting for a timeout.
-     */
-    fun tailscaleUp(context: Context): Boolean = runCatching {
-        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return true
-        @Suppress("DEPRECATION")
-        cm.allNetworks.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true }
-    }.getOrDefault(true)
-
-    /** "hugo.tailXXXX.ts.net", "host:8766" or "http://…" → base URL. */
-    fun baseUrl(address: String): String? {
-        val a = address.trim().removePrefix("http://").removePrefix("https://").trimEnd('/')
-        if (a.isEmpty() || a.any { it.isWhitespace() || it == '/' || it == '?' || it == '@' }) return null
-        val hasPort = if (a.startsWith("[")) a.contains("]:") else a.contains(':') // [IPv6]:port or host:port
-        return "http://" + if (hasPort) a else "$a:$DEFAULT_PORT"
-    }
-
     /** Returns the model name the PC runs. */
-    suspend fun ping(address: String, key: String = ""): String = withContext(Dispatchers.IO) {
-        val home = HomePc.usesHome(address, key)
-        val conn = open(address, if (home) "/v1/ping" else "/health", connectMs = 5000, readMs = 8000, key = key)
+    suspend fun ping(address: String, key: String): String = withContext(Dispatchers.IO) {
+        val conn = open(address, "/v1/ping", connectMs = 5000, readMs = 8000, key = key)
         try {
-            val json = JSONObject(read(conn, home))
-            if (home) {
-                val model = json.optString("whisper").ifBlank { "modèle en chargement" }
-                if (json.optString("device") == "cuda") "$model, carte graphique" else model
-            } else json.optString("model")
+            val json = JSONObject(read(conn))
+            val whisper = json.optJSONObject("services")?.optJSONObject("whisper")
+            val state = whisper?.optString("state").orEmpty()
+            val model = json.optString("whisper").ifBlank { "modèle en chargement" }
+            val where = if (json.optString("device") == "cuda") "$model, carte graphique" else model
+            if (state == "asleep" || state == "off") "$where, en veille" else where
         } finally {
             conn.disconnect()
         }
     }
 
     /**
-     * Returns the text; throws [IOException] with a user-facing message. A connection that fails right away
-     * (network switching from Wi-Fi to mobile data, Tailscale reconnecting) is retried once.
+     * Asks the PC to load Whisper now (a recording just started), so it is awake when the audio arrives. Best effort:
+     * a failure is only logged, the dictation itself reports any real problem.
      */
-    suspend fun transcribe(address: String, pcm: FloatArray, lang: String, key: String = "",
+    suspend fun wake(address: String, key: String) = withContext(Dispatchers.IO) {
+        try {
+            val conn = open(address, "/v1/wake", connectMs = 5000, readMs = 8000, key = key)
+            try {
+                val body = HomePc.WAKE_BODY.toByteArray()
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setFixedLengthStreamingMode(body.size)
+                conn.outputStream.use { it.write(body) }
+                read(conn)
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: IOException) {
+            DiagnosticLog.add("PC : réveil de Whisper raté (${e.message})")
+        }
+    }
+
+    /**
+     * Returns the text; throws [IOException] with a user-facing message. A connection that fails right away
+     * (network switching from Wi-Fi to mobile data) is retried once.
+     */
+    suspend fun transcribe(address: String, pcm: FloatArray, lang: String, key: String,
                            hotwords: String? = null): String = try {
         transcribeOnce(address, pcm, lang, key, hotwords)
     } catch (e: ConnectFailed) {
@@ -151,23 +139,16 @@ object PcEngine {
 
     private suspend fun transcribeRaw(address: String, pcm: FloatArray, lang: String, key: String,
                                       hotwords: String?): String = withContext(Dispatchers.IO) {
-        val home = HomePc.usesHome(address, key)
         val secs = pcm.size / AudioCapture.RATE
-        if (!home && secs > MAX_SECONDS) throw IOException("dictée de plus d'une minute : trop longue pour le PC")
-        if (home && secs > HomePc.MAX_SECONDS) throw IOException("dictée de plus de 5 minutes : trop longue pour le PC")
-        val path = if (home) "/v1/transcribe" else "/transcribe" + if (lang == "fr" || lang == "en") "?lang=$lang" else ""
-        val conn = open(address, path, connectMs = 5000, readMs = 20_000 + secs * 1000, key = key)
+        if (secs > HomePc.MAX_SECONDS) throw IOException("dictée de plus de 5 minutes : trop longue pour le PC")
+        val conn = open(address, "/v1/transcribe", connectMs = 5000, readMs = 20_000 + secs * 1000, key = key)
         try {
-            val wav = if (home) HomePc.encodeAudio(pcm) else wav16(pcm)
+            val body = HomePc.encodeAudio(pcm)
             conn.requestMethod = "POST"
             conn.doOutput = true
-            if (home) {
-                conn.setRequestProperty("Content-Type", "application/octet-stream")
-                conn.setRequestProperty("X-VT-Options", HomePc.options(lang, hotwords))
-            } else {
-                conn.setRequestProperty("Content-Type", "audio/wav")
-            }
-            conn.setFixedLengthStreamingMode(wav.size)
+            conn.setRequestProperty("Content-Type", "application/octet-stream")
+            conn.setRequestProperty("X-VT-Options", HomePc.options(lang, hotwords))
+            conn.setFixedLengthStreamingMode(body.size)
             val t0 = System.currentTimeMillis()
             try {
                 conn.connect()
@@ -176,8 +157,8 @@ object PcEngine {
             } catch (e: IOException) {
                 throw ConnectFailed(describeConnect(e))
             }
-            conn.outputStream.use { it.write(wav) }
-            val text = JSONObject(read(conn, home)).optString("text").trim()
+            conn.outputStream.use { it.write(body) }
+            val text = JSONObject(read(conn)).optString("text").trim()
             DiagnosticLog.add("PC : $secs s d'audio transcrit en ${System.currentTimeMillis() - t0} ms (envoi compris)")
             text
         } finally {
@@ -185,41 +166,28 @@ object PcEngine {
         }
     }
 
-    /** 16 kHz mono 16-bit PCM WAV. */
-    private fun wav16(pcm: FloatArray): ByteArray {
-        val dataBytes = pcm.size * 2
-        val b = ByteBuffer.allocate(44 + dataBytes).order(ByteOrder.LITTLE_ENDIAN)
-        b.put("RIFF".toByteArray()).putInt(36 + dataBytes).put("WAVE".toByteArray())
-        b.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1)
-            .putInt(AudioCapture.RATE).putInt(AudioCapture.RATE * 2).putShort(2).putShort(16)
-        b.put("data".toByteArray()).putInt(dataBytes)
-        for (f in pcm) b.putShort((f.coerceIn(-1f, 1f) * 32767f).toInt().toShort())
-        return b.array()
-    }
-
-    private fun open(address: String, path: String, connectMs: Int, readMs: Int, key: String = ""): HttpURLConnection {
-        val home = HomePc.usesHome(address, key)
-        val base = (if (home) HomePc.baseUrl(address) else baseUrl(address))
-            ?: throw IOException(if (home) "adresse Funnel invalide (exemple : https://mon-pc.tail1234.ts.net)" else "adresse du PC invalide")
+    private fun open(address: String, path: String, connectMs: Int, readMs: Int, key: String): HttpURLConnection {
+        if (key.isBlank()) throw IOException("clé du PC manquante (Home Connections : onglet Connexion → « Copier la clé »)")
+        val base = HomePc.baseUrl(address)
+            ?: throw IOException("adresse du PC invalide (exemple : https://mon-pc.tail1234.ts.net)")
         val conn = URL(base + path).openConnection() as HttpURLConnection
         conn.connectTimeout = connectMs
         conn.readTimeout = readMs
         conn.useCaches = false
-        if (home) {
-            conn.setRequestProperty("Authorization", "Bearer ${key.trim()}")
-            conn.setRequestProperty("User-Agent", "VoiceTyperMobile")
-        }
+        conn.setRequestProperty("Authorization", "Bearer ${key.trim()}")
+        conn.setRequestProperty("X-App", HomePc.APP)
+        conn.setRequestProperty("User-Agent", "VoiceTyperMobile")
         return conn
     }
 
     private fun describeConnect(e: IOException): String = when (e) {
-        is UnknownHostException -> "nom du PC inconnu (Tailscale activé sur le téléphone ?)"
-        is SocketTimeoutException -> "le PC ne répond pas (allumé ? Tailscale actif ?)"
-        is ConnectException, is NoRouteToHostException -> "PC injoignable (allumé ? serveur Whisper lancé ? Tailscale actif ?)"
+        is UnknownHostException -> "adresse du PC inconnue (pas de réseau ? adresse mal recopiée ?)"
+        is SocketTimeoutException -> "le PC ne répond pas (allumé ? pas en veille ?)"
+        is ConnectException, is NoRouteToHostException -> "PC injoignable (allumé ? Home Connections lancé ?)"
         else -> "PC injoignable (${e.javaClass.simpleName})"
     }
 
-    private fun read(conn: HttpURLConnection, home: Boolean = false): String {
+    private fun read(conn: HttpURLConnection): String {
         val status = try {
             conn.responseCode
         } catch (e: SocketTimeoutException) {
@@ -229,12 +197,6 @@ object PcEngine {
         }
         val text = (if (status in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (status in 200..299) return text
-        if (home) throw IOException(HomePc.describeStatus(status))
-        throw IOException(when (status) {
-            404 -> "le PC ne trouve pas le serveur Whisper (utilisez le nom en .ts.net, pas l'adresse 100.…)"
-            400 -> "dictée vide ou trop longue pour le PC"
-            502, 503 -> "serveur Whisper du PC arrêté"
-            else -> "erreur du PC ($status)"
-        })
+        throw IOException(HomePc.describeStatus(status))
     }
 }

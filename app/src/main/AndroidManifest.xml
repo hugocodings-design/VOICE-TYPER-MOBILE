@@ -7,11 +7,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Internet is used ONLY to download Whisper models from Hugging Face (Moteur de reconnaissance) and,
-         when the user picks « PC (boosté) », to reach the Whisper server on their own PC through Tailscale
-         (plain HTTP inside the encrypted tailnet: see network_security_config). Otherwise audio and text never leave the phone. -->
+         when the user picks « PC (boosté) », to reach Home Connections on their own PC (HTTPS + key, Tailscale
+         Funnel). Otherwise audio and text never leave the phone. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- « PC (boosté) »: tells whether Tailscale (a VPN) is connected, to skip the PC at once when it is not -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <queries>
         <!-- Android 11+: required to see the phone's speech recognition service -->

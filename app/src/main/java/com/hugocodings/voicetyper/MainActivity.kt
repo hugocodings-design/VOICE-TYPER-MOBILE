@@ -808,7 +808,7 @@ private fun EngineCard(s: Settings) {
     Section("Moteur de reconnaissance",
         "Whisper = le même moteur d'IA que Voice Typer sur PC, exécuté sur le téléphone, hors ligne. " +
             "Téléchargez un modèle une fois (Wi-Fi conseillé), puis choisissez-le. " +
-            "PC (boosté) = votre PC fait le calcul avec sa carte graphique, par Tailscale.") {
+            "PC (boosté) = votre PC de la maison fait le calcul avec sa carte graphique (Home Connections).") {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(s.engine == Engine.WHISPER, { update { it.copy(engine = Engine.WHISPER) } }, { Text("Whisper (local)") })
             FilterChip(s.engine == Engine.PC, { update { it.copy(engine = Engine.PC) } }, { Text("PC (boosté)") })
@@ -870,24 +870,22 @@ private fun EngineCard(s: Settings) {
     }
 }
 
-/** The PC link: Voice Typer Home through Tailscale Funnel (address + key, nothing to install on the phone), or —
- *  without a key — the older Whisper server shared with FLASH LINGO through Tailscale. Plus a connection test. */
+/** The PC link: Home Connections through Tailscale Funnel (address + key, nothing to install on the phone),
+ *  plus a connection test. */
 @Composable
 private fun PcBoostSettings(s: Settings) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     var address by remember { mutableStateOf(s.pcAddress) }
     var key by remember { mutableStateOf(s.pcKey) }
-    val funnel = key.isNotBlank()
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var historyTick by remember { mutableIntStateOf(0) }
     HorizontalDivider()
     Text("Le téléphone envoie l'audio à votre PC de la maison, qui le transcrit avec sa carte graphique. " +
-        "Avec Voice Typer Home sur le PC : entrez son adresse Funnel (https://….ts.net) et sa clé (icône bleue → " +
-        "« Copier la clé ») — rien à installer sur le téléphone, la liaison est chiffrée. Sans clé : l'ancien serveur " +
-        "Whisper (FLASH LINGO) par l'app Tailscale. PC éteint ou injoignable → la reconnaissance du téléphone prend le " +
-        "relais tout de suite.",
+        "Entrez l'adresse et la clé de Home Connections (sa fenêtre sur le PC → onglet Connexion → « Copier » et " +
+        "« Copier la clé ») — les mêmes pour toutes vos apps, rien à installer sur le téléphone, liaison " +
+        "chiffrée, en Wi-Fi comme en LTE. PC éteint ou injoignable → la reconnaissance du téléphone prend le relais " +
+        "tout de suite.",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     OutlinedTextField(address, {
         address = it.trim()
@@ -898,25 +896,22 @@ private fun PcBoostSettings(s: Settings) {
     OutlinedTextField(key, {
         key = it.trim()
         update { st -> st.copy(pcKey = key) }
-    }, Modifier.fillMaxWidth(), label = { Text("Clé de Voice Typer Home (vide = ancien serveur par Tailscale)") },
+    }, Modifier.fillMaxWidth(), label = { Text("Clé de Home Connections") },
         singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
             autoCorrectEnabled = false))
     when {
-        address.isBlank() -> Text("Entrez le nom du PC : sans lui, la bulle n'utilise pas le PC.",
+        address.isBlank() || key.isBlank() -> Text("Entrez l'adresse et la clé : sans elles, la bulle n'utilise pas le PC.",
             color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        funnel && HomePc.baseUrl(address) == null -> Text("Adresse invalide (exemple : https://mon-pc.tail1234.ts.net)",
-            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        !funnel && PcEngine.baseUrl(address) == null -> Text("Nom invalide (exemple : mon-pc.tail1234.ts.net)",
+        HomePc.baseUrl(address) == null -> Text("Adresse invalide (exemple : https://mon-pc.tail1234.ts.net)",
             color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        FilledTonalButton(enabled = !busy && address.isNotBlank(), onClick = {
+        FilledTonalButton(enabled = !busy && HomePc.usesHome(address, key), onClick = {
             busy = true
             status = "Connexion…"
             scope.launch {
                 status = try {
-                    if (!funnel && !PcEngine.tailscaleUp(context)) throw java.io.IOException("Tailscale n'est pas connecté sur ce téléphone : ouvrez l'app Tailscale")
                     val model = PcEngine.ping(address, key)
                     PcHealth.record(true, "Test : PC joignable ($model)")
                     "✓ Connecté : $model sur le PC"

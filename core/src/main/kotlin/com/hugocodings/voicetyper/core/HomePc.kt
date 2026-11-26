@@ -6,15 +6,21 @@ import java.nio.ByteOrder
 import java.util.zip.Deflater
 
 /**
- * « Voice Typer Home » protocol (desktop repo `home_server/`): the home PC behind Tailscale **Funnel** has a public
- * HTTPS address (`https://<pc>.<tailnet>.ts.net`) and checks a key — no Tailscale needed on the phone.
- *   GET  /v1/ping        (Authorization: Bearer <key>) → {"whisper","device",…}
+ * « Home Connections » protocol (repo `Home-Connections`, the home PC's one front door, which replaced Voice Typer
+ * Home at the same address and key): the home PC behind Tailscale **Funnel** has a public HTTPS address
+ * (`https://<pc>.<tailnet>.ts.net`) and checks a key — no Tailscale needed on the phone.
+ *   GET  /v1/ping        (Authorization: Bearer <key>) → {"whisper","device","services",…}
+ *   POST /v1/wake        {"models":["whisper"]} → loads Whisper now (sent when a recording starts)
  *   POST /v1/transcribe  body = zlib(16-bit little-endian PCM, 16 kHz mono), header X-VT-Options (JSON) → {"text"}
- * Used when [Settings.pcKey] is set; without a key the older FLASH LINGO server through Tailscale is used.
+ * Every request also carries `X-App: voicetyper-mobile` (the PC's Activité tab). Address + key are both required:
+ * the older key-less Whisper server through Tailscale (port 8766) is retired.
  */
 object HomePc {
     const val MAX_SECONDS = 300
+    const val APP = "voicetyper-mobile"
+    const val WAKE_BODY = """{"models":["whisper"]}"""
 
+    /** Address and key both set: the PC engine can be used. */
     fun usesHome(address: String, key: String): Boolean = address.isNotBlank() && key.isNotBlank()
 
     /** "hugo.tail3001ff.ts.net", "https://hugo.tail3001ff.ts.net/" → "https://hugo.tail3001ff.ts.net". HTTPS only. */
@@ -47,13 +53,13 @@ object HomePc {
         return """{"language":$language,"hotwords":$hw,"mode":"auto","sample_rate":16000}"""
     }
 
-    /** User-facing message for an HTTP status from Voice Typer Home. */
+    /** User-facing message for an HTTP status from Home Connections. */
     fun describeStatus(status: Int): String = when (status) {
-        401, 403 -> "clé refusée (recopiez-la depuis l'icône de Voice Typer Home : « Copier la clé »)"
+        401, 403 -> "clé refusée (recopiez-la depuis Home Connections : onglet Connexion → « Copier la clé »)"
         429 -> "trop de mauvaises clés : réessayez dans une minute"
         413 -> "dictée trop longue pour le PC"
-        503 -> "le PC prépare le modèle (première fois : téléchargement)"
-        404, 502 -> "Voice Typer Home n'est pas lancé sur le PC (ou Funnel n'est pas actif)"
+        503 -> "le PC charge Whisper (il dormait) : le téléphone prend le relais"
+        404, 502 -> "Home Connections n'est pas lancé sur le PC (ou Funnel n'est pas actif)"
         else -> "erreur du PC ($status)"
     }
 }
