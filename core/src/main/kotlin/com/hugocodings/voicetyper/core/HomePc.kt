@@ -19,6 +19,22 @@ import java.util.zip.Deflater
 object HomePc {
     const val MAX_SECONDS = 300
     const val APP = "voicetyper-mobile"
+    /** The user's Home Connections (Funnel) address, prefilled in the PC card; the key is still required. */
+    const val DEFAULT_ADDRESS = "https://hugo.tail3001ff.ts.net"
+
+    /**
+     * An address saved for the retired key-less server (0.8.x: tailnet machine name like "hugo", a 100.x IP,
+     * "host:8766", http://…) — it can't reach Home Connections, so the settings migration replaces it.
+     */
+    fun isLegacyAddress(address: String): Boolean {
+        val a = address.trim().trimEnd('/')
+        if (a.isEmpty()) return false
+        if (a.startsWith("http://")) return true
+        val host = a.removePrefix("https://")
+        if (':' in host) return true
+        if ('.' !in host) return true
+        return Regex("""\d{1,3}(\.\d{1,3}){3}""").matches(host)
+    }
     const val WAKE_BODY = """{"models":["whisper"]}"""
     /** `POST /v1/presence` every 15 s while the bubble shows for typing (Home Connections ≥ 1.3; older: 404, ignored). */
     const val PRESENCE_EVERY_MS = 15_000L

@@ -52,7 +52,7 @@ data class Settings(
     val engine: Engine = Engine.ANDROID,
     val whisperModel: String = ModelCatalog.RECOMMENDED,
     /** Home Connections address on the user's PC ("https://mon-pc.tailXXXX.ts.net", Tailscale Funnel). */
-    val pcAddress: String = "",
+    val pcAddress: String = HomePc.DEFAULT_ADDRESS,
     /** Home Connections key (`Authorization: Bearer`, the same for every app). Address + key → [HomePc]; the older
      *  key-less server through Tailscale is retired, so the PC engine needs both. */
     val pcKey: String = "",
@@ -94,7 +94,7 @@ data class Settings(
     }
 
     companion object {
-        const val CURRENT_VERSION = 2
+        const val CURRENT_VERSION = 3
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = false }
 
         fun decode(text: String?): Settings =
@@ -111,6 +111,10 @@ data class Settings(
     fun migrated(): Settings {
         var s = this
         if (s.settingsVersion < 2 && s.language == null) s = s.copy(language = Lang.FR)
+        // v2 → v3: empty or old key-less server address (tailnet name, IP, :8766) → Home Connections address
+        if (s.settingsVersion < 3 && (s.pcAddress.isBlank() || HomePc.isLegacyAddress(s.pcAddress))) {
+            s = s.copy(pcAddress = HomePc.DEFAULT_ADDRESS)
+        }
         return s.copy(settingsVersion = CURRENT_VERSION)
     }
 

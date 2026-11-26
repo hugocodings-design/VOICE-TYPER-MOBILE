@@ -360,10 +360,22 @@ class InsertionTest {
 }
 
 class PcBoostSettingsTest {
-    @Test fun oldSettingsGetEmptyPcAddress() {
+    @Test fun oldSettingsGetDefaultPcAddress() {
         val s = Settings.decode("""{"settingsVersion":2,"engine":"WHISPER","whisperModel":"base"}""")
         assertEquals(Engine.WHISPER, s.engine)
-        assertEquals("", s.pcAddress)
+        assertEquals(HomePc.DEFAULT_ADDRESS, s.pcAddress)
+        assertEquals(HomePc.DEFAULT_ADDRESS, Settings().pcAddress)
+    }
+
+    @Test fun oldServerAddressesMigrateToHomeConnections() {
+        for (old in listOf("", "hugo", "100.101.102.103", "hugo:8766", "http://hugo.tail3001ff.ts.net:8766")) {
+            val s = Settings.decode("""{"settingsVersion":2,"engine":"PC","pcAddress":"$old"}""")
+            assertEquals(HomePc.DEFAULT_ADDRESS, s.pcAddress, old)
+        }
+        // a Funnel address is kept, and nothing is rewritten once migrated (the user may clear it on purpose)
+        assertEquals("mon-pc.tail1234.ts.net",
+            Settings.decode("""{"settingsVersion":2,"pcAddress":"mon-pc.tail1234.ts.net"}""").pcAddress)
+        assertEquals("", Settings.decode("""{"settingsVersion":3,"pcAddress":""}""").pcAddress)
     }
 
     @Test fun pcEngineRoundTrips() {
