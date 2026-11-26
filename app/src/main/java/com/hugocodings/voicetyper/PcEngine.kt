@@ -1,7 +1,11 @@
 package com.hugocodings.voicetyper
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.hugocodings.voicetyper.core.HomePc
 import org.json.JSONObject
@@ -67,6 +71,42 @@ object PcHealth {
 }
 
 /**
+ * « Voice Typer Mobile is open »: while the bubble shows because the user is typing (PC engine set up), Home
+ * Connections is told every [HomePc.PRESENCE_EVERY_MS] (`POST /v1/presence`), so it loads Whisper right away and keeps
+ * it ready; when the bubble goes, one `{"active":false}` (after a short grace: the keyboard flickers between fields)
+ * and Whisper sleeps after its delay on the PC. Which models load is chosen in Home Connections (Applications).
+ */
+object PcPresence {
+    private var loop: Job? = null
+    private var leaving: Job? = null
+    private var target: Pair<String, String>? = null
+
+    fun update(scope: CoroutineScope, active: Boolean, address: String, key: String) {
+        val wanted = address to key
+        if (active && HomePc.usesHome(address, key)) {
+            leaving?.cancel()
+            if (loop?.isActive == true && target == wanted) return
+            loop?.cancel()
+            target = wanted
+            loop = scope.launch {
+                while (isActive) {
+                    PcEngine.presence(address, key, true)
+                    delay(HomePc.PRESENCE_EVERY_MS)
+                }
+            }
+        } else if (loop != null) {
+            loop?.cancel()
+            loop = null
+            val (a, k) = target ?: return
+            leaving = scope.launch {
+                delay(3_000)
+                PcEngine.presence(a, k, false)
+            }
+        }
+    }
+}
+
+/**
  * Client of Home Connections on the user's home PC ([HomePc]): public HTTPS address (Tailscale Funnel), key checked
  * by the PC, no Tailscale on the phone. GET /v1/ping, POST /v1/wake, POST /v1/transcribe (zlib PCM).
  */
@@ -106,6 +146,26 @@ object PcEngine {
             }
         } catch (e: IOException) {
             DiagnosticLog.add("PC : réveil de Whisper raté (${e.message})")
+        }
+    }
+
+    /** « This app is open » (or no longer, [active] false). Best effort: failures are ignored. */
+    suspend fun presence(address: String, key: String, active: Boolean) = withContext(Dispatchers.IO) {
+        try {
+            val conn = open(address, "/v1/presence", connectMs = 5000, readMs = 8000, key = key)
+            try {
+                val body = HomePc.presenceBody(active).toByteArray()
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setFixedLengthStreamingMode(body.size)
+                conn.outputStream.use { it.write(body) }
+                conn.responseCode
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: IOException) {
+            // ignored: presence is a hint, the next one (15 s) or the dictation itself reports a real problem
         }
     }
 

@@ -139,6 +139,8 @@ class VoiceAccessibilityService : AccessibilityService(), OverlayController.Call
         val show = busy || (!hiddenHere && (s.bubbleMode == BubbleMode.ALWAYS || typing))
 
         main.removeCallbacks(hideLater)
+        // Home Connections loads Whisper while the user is typing with the PC engine (Applications, on the PC)
+        PcPresence.update(scope, s.engine == Engine.PC && (busy || (!hiddenHere && typing)), s.pcAddress, s.pcKey)
         if (show) {
             if (s.engine == Engine.PC && HomePc.usesHome(s.pcAddress, s.pcKey) && !busy) {
                 scope.launch { PcHealth.warmUp(s.pcAddress, s.pcKey) }
