@@ -437,6 +437,17 @@ class HomePcTest {
         assertTrue(HomePc.describeStatus(503).contains("relais"))
     }
 
+    @Test fun connectionCode() {
+        val key = "AbC-_" + "x".repeat(40)
+        assertEquals("https://hugo.tail3001ff.ts.net" to key,
+            HomePc.parseConnectionCode("  https://hugo.tail3001ff.ts.net/#key=$key\n"))
+        assertEquals("" to key, HomePc.parseConnectionCode(key))
+        assertEquals("https://hugo.tail3001ff.ts.net" to "", HomePc.parseConnectionCode("https://hugo.tail3001ff.ts.net/"))
+        for (bad in listOf(null, "", "bonjour", "https://x.ts.net#key=court", "ftp://x#key=$key", "#key=$key")) {
+            assertEquals(null, HomePc.parseConnectionCode(bad), bad)
+        }
+    }
+
     @Test fun optionsHeader() {
         assertEquals("""{"language":"fr","hotwords":"Gagnon, \"CSP\"","mode":"auto","sample_rate":16000}""",
             HomePc.options("fr", "Gagnon, \"CSP\""))

@@ -53,6 +53,26 @@ object HomePc {
         return """{"language":$language,"hotwords":$hw,"mode":"auto","sample_rate":16000}"""
     }
 
+    /**
+     * « Coller depuis Home Connections »: the connection code Home Connections copies, `<address>#key=<key>` →
+     * (address, key). Either part can be "" when the text only holds the other one (a bare key, or just the address).
+     * Null when it holds neither. Same rules as Home Connections' `settings.parse_connection_code`.
+     */
+    fun parseConnectionCode(text: String?): Pair<String, String>? {
+        val s = text?.trim().orEmpty()
+        val isKey = Regex("[A-Za-z0-9_-]{32,}")
+        fun isUrl(a: String) = a.startsWith("https://") || a.startsWith("http://")
+        val mark = s.indexOf("#key=")
+        if (mark >= 0) {
+            val address = s.substring(0, mark).trim().trimEnd('/')
+            val key = s.substring(mark + 5).trim()
+            return if (isUrl(address) && isKey.matches(key)) address to key else null
+        }
+        if (isKey.matches(s)) return "" to s
+        if (isUrl(s) && s.none { it.isWhitespace() }) return s.trimEnd('/') to ""
+        return null
+    }
+
     /** User-facing message for an HTTP status from Home Connections. */
     fun describeStatus(status: Int): String = when (status) {
         401, 403 -> "clé refusée (recopiez-la depuis Home Connections : onglet Connexion → « Copier la clé »)"

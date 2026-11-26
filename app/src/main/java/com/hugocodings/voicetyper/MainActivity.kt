@@ -875,6 +875,7 @@ private fun EngineCard(s: Settings) {
 @Composable
 private fun PcBoostSettings(s: Settings) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var address by remember { mutableStateOf(s.pcAddress) }
     var key by remember { mutableStateOf(s.pcKey) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -882,11 +883,31 @@ private fun PcBoostSettings(s: Settings) {
     var historyTick by remember { mutableIntStateOf(0) }
     HorizontalDivider()
     Text("Le téléphone envoie l'audio à votre PC de la maison, qui le transcrit avec sa carte graphique. " +
-        "Entrez l'adresse et la clé de Home Connections (sa fenêtre sur le PC → onglet Connexion → « Copier » et " +
-        "« Copier la clé ») — les mêmes pour toutes vos apps, rien à installer sur le téléphone, liaison " +
+        "Le plus simple : dans Home Connections, « Copier le code de connexion » (fenêtre → Connexion, ou la page " +
+        "/admin ouverte sur ce téléphone), puis « Coller depuis Home Connections » ci-dessous — les mêmes pour toutes vos apps, rien à installer sur le téléphone, liaison " +
         "chiffrée, en Wi-Fi comme en LTE. PC éteint ou injoignable → la reconnaissance du téléphone prend le relais " +
         "tout de suite.",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    FilledTonalButton(onClick = {
+        // the code Home Connections copies (« Copier le code de connexion »): address#key=… → both fields at once
+        val clip = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+        val parsed = HomePc.parseConnectionCode(text)
+        status = if (parsed == null) {
+            "Rien à coller : dans Home Connections, « Copier le code de connexion » (fenêtre → Connexion, ou la page " +
+                "/admin sur ce téléphone), puis réessayez."
+        } else {
+            val (a, k) = parsed
+            if (a.isNotEmpty()) address = a
+            if (k.isNotEmpty()) key = k
+            update { st -> st.copy(pcAddress = address, pcKey = key) }
+            when {
+                a.isNotEmpty() && k.isNotEmpty() -> "Adresse et clé collées : touchez « Tester la connexion »."
+                k.isNotEmpty() -> "Clé collée (l'adresse n'était pas dans le presse-papiers)."
+                else -> "Adresse collée (la clé n'était pas dans le presse-papiers)."
+            }
+        }
+    }, Modifier.fillMaxWidth()) { Text("Coller depuis Home Connections") }
     OutlinedTextField(address, {
         address = it.trim()
         update { st -> st.copy(pcAddress = address) }
