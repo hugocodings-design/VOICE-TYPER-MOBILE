@@ -67,7 +67,10 @@ Android only: iOS forbids overlays and writing into other apps (a custom keyboar
     `Authorization: Bearer <key>`, `X-App: voicetyper-mobile`; `GET /v1/ping` → {"whisper","device","services"},
     `POST /v1/wake` `{"models":["whisper"]}` when a PC recording starts (Home Connections puts Whisper to sleep),
     `POST /v1/transcribe` body = zlib int16 PCM, header `X-VT-Options` (language, hotwords = Whisper prompt, mode auto)
-    → {"text"}; 5 min max; « Coller depuis Home Connections » (0.10.1) reads the clipboard: `HomePc.parseConnectionCode`
+    → {"text"}; 5 min max; `PcPresence` (0.10.1): while the bubble shows for typing (or a dictation runs) with the PC
+    engine set up, `POST /v1/presence {"active":true}` every 15 s, `{"active":false}` 3 s after it goes — Home
+    Connections loads the models chosen for this app (its Applications tab) and lets them sleep after their delay;
+    « Coller depuis Home Connections » (0.10.1) reads the clipboard: `HomePc.parseConnectionCode`
     (`<address>#key=<key>` → both fields; a bare key or a bare address → that field only), statuses → `HomePc.describeStatus` (401 key, 503 Whisper still loading → phone). The home PC
     uses its own Whisper model (no `model` sent: the phone's whisper.cpp names are not desktop names). Address AND key
     are required (HTTPS only, no cleartext): the older key-less FLASH LINGO Whisper server through Tailscale (port 8766)

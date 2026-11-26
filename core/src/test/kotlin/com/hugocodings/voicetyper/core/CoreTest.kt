@@ -433,6 +433,9 @@ class HomePcTest {
     @Test fun homeConnectionsStandard() {
         assertEquals("voicetyper-mobile", HomePc.APP)
         assertEquals("""{"models":["whisper"]}""", HomePc.WAKE_BODY)
+        assertEquals("""{"active":true}""", HomePc.presenceBody(true))
+        assertEquals("""{"active":false}""", HomePc.presenceBody(false))
+        assertTrue(HomePc.PRESENCE_EVERY_MS < 30_000)    // shorter than the smallest sleep delay on the PC
         assertTrue(HomePc.describeStatus(401).contains("Home Connections"))
         assertTrue(HomePc.describeStatus(503).contains("relais"))
     }
